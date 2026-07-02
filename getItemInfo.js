@@ -153,8 +153,8 @@ async function main() {
             pageNum++;
         }
 
-        // 将数据保存到同目录下的 buff_item.json
-        const outputPath = path.resolve(__dirname, 'buff_item.json');
+        // 将数据保存到同目录下的 ./data/buff_item.json
+        const outputPath = path.resolve(__dirname, './data/buff_item.json');
         fs.writeFileSync(outputPath, JSON.stringify(results, null, 2));
         console.log(`\n抓取完成，数据已保存至: ${outputPath}`);
 

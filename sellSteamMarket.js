@@ -8,25 +8,54 @@ const { LoginSession, EAuthTokenPlatformType } = require('steam-session');
 const args = process.argv.slice(2);
 let itemId = null;
 let price = null; // 输入为你期望到手的价格（例如 100.50）
+let feePrice = null; // 输入为买家支付的含税价格
 
 for (let i = 0; i < args.length; i++) {
     if (args[i] === '-i' || args[i] === '--item') {
         itemId = args[++i];
     } else if (args[i] === '-p' || args[i] === '--price') {
         price = parseFloat(args[++i]);
+    } else if (args[i] === '-f' || args[i] === '--feeprice') {
+        feePrice = parseFloat(args[++i]);
     }
 }
 
-if (!itemId || !price) {
-    console.error("用法: node sellSteamMarket.js -i <物品ID> -p <期望到手价格>");
+if (!itemId || (!price && !feePrice)) {
+    console.error("用法: node sellSteamMarket.js -i <物品ID> [-p <期望到手价格> | -f <含税挂单价格>]");
     console.error("参数:");
     console.error("  -i, --item      Steam 物品ID (assetid)");
-    console.error("  -p, --price     期望到手的价格（数字，无需考虑Steam税费，例如 12.5）");
+    console.error("  -p, --price     期望到手的价格（税前，您实际收到的钱，例如 12.5）");
+    console.error("  -f, --feeprice  含税挂单价格（税后，买家实际支付的钱，例如 14.37）");
     process.exit(1);
 }
 
-// 转换价格为「分」 (cents)，因为 Steam API 接收的单位是最小货币单位（分）
-const priceWithoutFee = Math.round(price * 100);
+// 转换价格为「分」 (cents)，计算税费
+let priceWithoutFee;
+let priceWithFee;
+
+if (price) {
+    priceWithoutFee = Math.round(price * 100);
+    const steamFee = Math.max(1, Math.floor(priceWithoutFee * 0.05));
+    const pubFee = Math.max(1, Math.floor(priceWithoutFee * 0.10));
+    priceWithFee = priceWithoutFee + steamFee + pubFee;
+} else if (feePrice) {
+    priceWithFee = Math.round(feePrice * 100);
+    let estimated = Math.floor(priceWithFee / 1.15);
+    let found = false;
+    for (let i = estimated - 5; i <= estimated + 5; i++) {
+        if (i <= 0) continue;
+        let sFee = Math.max(1, Math.floor(i * 0.05));
+        let pFee = Math.max(1, Math.floor(i * 0.10));
+        if (i + sFee + pFee === priceWithFee) {
+            priceWithoutFee = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        priceWithoutFee = estimated;
+    }
+}
 
 // 2. 读取并解析 .env
 const envPath = path.resolve(__dirname, '.env');
@@ -51,8 +80,8 @@ function decodeBase64(str) {
 
 const accountName = decodeBase64(envVars.SteamAccount);
 const password = decodeBase64(envVars.SteamPassword);
-const sharedSecret = envVars.SharedSecret; 
-const identitySecret = envVars.IdentitySecret; 
+const sharedSecret = envVars.SharedSecret;
+const identitySecret = envVars.IdentitySecret;
 
 if (!accountName || !password || !sharedSecret || !identitySecret) {
     console.error("凭证不完整，请确保 .env 中包含 SteamAccount, SteamPassword, SharedSecret, IdentitySecret");
@@ -71,7 +100,11 @@ if (proxyUrl) {
 
 const session = new LoginSession(EAuthTokenPlatformType.WebBrowser, sessionOpts);
 
-const sessionFilePath = path.resolve(__dirname, 'steam_session.json');
+const dataDir = path.resolve(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+}
+const sessionFilePath = path.resolve(dataDir, 'steam_session.json');
 
 async function doLogin() {
     let savedToken = null;
@@ -79,7 +112,7 @@ async function doLogin() {
         try {
             const data = JSON.parse(fs.readFileSync(sessionFilePath, 'utf8'));
             savedToken = data.refreshToken;
-        } catch (e) {}
+        } catch (e) { }
     }
 
     if (savedToken) {
@@ -95,7 +128,7 @@ async function doLogin() {
     }
 
     console.log("正在重新连接并进行账号密码二次验证...");
-    
+
     return new Promise((resolve, reject) => {
         session.startWithCredentials({
             accountName: accountName,
@@ -115,7 +148,7 @@ async function doLogin() {
                 fs.writeFileSync(sessionFilePath, JSON.stringify({
                     refreshToken: session.refreshToken
                 }, null, 2));
-                
+
                 const cookies = await session.getWebCookies();
                 resolve(cookies);
             } catch (e) {
@@ -126,7 +159,7 @@ async function doLogin() {
         session.on('error', (err) => {
             reject(new Error(`Steam Session 错误: ${err.message}`));
         });
-        
+
         session.on('timeout', () => {
             reject(new Error(`登录请求超时，请检查您的代理配置。`));
         });
@@ -138,7 +171,7 @@ doLogin().then(async (cookies) => {
     const community = new SteamCommunity(proxyUrl ? {
         request: request.defaults({ proxy: proxyUrl })
     } : {});
-    
+
     community.setCookies(cookies);
     console.log(`登录系统构建成功！正在提交物品 [${itemId}] 上架请求...`);
 
@@ -148,16 +181,37 @@ doLogin().then(async (cookies) => {
     const contextid = 2;
     const amount = 1;
 
-    community.sellItem(appid, contextid, itemId, amount, priceWithoutFee, function(err) {
+    community.httpRequestPost({
+        url: 'https://steamcommunity.com/market/sellitem/',
+        form: {
+            sessionid: community.getSessionID(),
+            appid: 730,
+            contextid: 2,
+            assetid: itemId,
+            amount: 1,
+            price: priceWithoutFee
+        },
+        headers: {
+            'Referer': 'https://steamcommunity.com/my/inventory/'
+        }
+    }, function (err, response, body) {
         if (err) {
             console.error("上架提交失败:", err.message);
             process.exit(1);
-        } else {
-            console.log(`物品上架请求提交成功！`);
-            console.log(`物品ID: ${itemId}, 期望到手价: ${price}`);
-            console.log("====================================");
-            console.log("（由于您要求不需要完成二步确认交易步骤，请稍后前往手机 Steam 或使用确认脚本进行市场挂单确认）");
-            process.exit(0);
+        }
+        try {
+            const data = JSON.parse(body);
+            if (data.success) {
+                console.log(`物品上架请求提交成功！`);
+                console.log(`物品ID: ${itemId}, 期望到手价(税前单价): ${priceWithoutFee / 100}, 买家支付价(税后单价): ${priceWithFee / 100}`);
+                process.exit(0);
+            } else {
+                console.error("上架提交被拒绝: Steam 返回错误 - ", data.message || body);
+                process.exit(1);
+            }
+        } catch (e) {
+            console.error("解析 Steam 返回数据失败:", body);
+            process.exit(1);
         }
     });
 

@@ -80,7 +80,11 @@ if (isConfirm) {
 
     const session = new LoginSession(EAuthTokenPlatformType.WebBrowser, sessionOpts);
 
-    const sessionFilePath = path.resolve(__dirname, 'steam_session.json');
+    const dataDir = path.resolve(__dirname, 'data');
+    if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+    }
+    const sessionFilePath = path.resolve(dataDir, 'steam_session.json');
 
     async function doLogin() {
         let savedToken = null;

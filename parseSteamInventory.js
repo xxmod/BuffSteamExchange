@@ -31,8 +31,8 @@ function decodeBase64(str) {
 
 const accountName = decodeBase64(envVars.SteamAccount);
 const password = decodeBase64(envVars.SteamPassword);
-const sharedSecret = envVars.SharedSecret; 
-const identitySecret = envVars.IdentitySecret; 
+const sharedSecret = envVars.SharedSecret;
+const identitySecret = envVars.IdentitySecret;
 
 if (!accountName || !password || !sharedSecret || !identitySecret) {
     console.error("凭证不完整，请确保 .env 中包含 SteamAccount, SteamPassword, SharedSecret, IdentitySecret");
@@ -48,10 +48,13 @@ if (proxyUrl) {
     console.log(`[提示] 检测到代理: ${proxyUrl}`);
     sessionOpts.httpProxy = proxyUrl;
 }
-
 const session = new LoginSession(EAuthTokenPlatformType.WebBrowser, sessionOpts);
 
-const sessionFilePath = path.resolve(__dirname, 'steam_session.json');
+const dataDir = path.resolve(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+}
+const sessionFilePath = path.resolve(dataDir, 'steam_session.json');
 
 async function doLogin() {
     let savedToken = null;
@@ -59,7 +62,7 @@ async function doLogin() {
         try {
             const data = JSON.parse(fs.readFileSync(sessionFilePath, 'utf8'));
             savedToken = data.refreshToken;
-        } catch (e) {}
+        } catch (e) { }
     }
 
     if (savedToken) {
@@ -75,7 +78,7 @@ async function doLogin() {
     }
 
     console.log("正在重新连接并进行账号密码二次验证...");
-    
+
     return new Promise((resolve, reject) => {
         session.startWithCredentials({
             accountName: accountName,
@@ -95,7 +98,7 @@ async function doLogin() {
                 fs.writeFileSync(sessionFilePath, JSON.stringify({
                     refreshToken: session.refreshToken
                 }, null, 2));
-                
+
                 const cookies = await session.getWebCookies();
                 resolve(cookies);
             } catch (e) {
@@ -106,7 +109,7 @@ async function doLogin() {
         session.on('error', (err) => {
             reject(new Error(`Steam Session 错误: ${err.message}`));
         });
-        
+
         session.on('timeout', () => {
             reject(new Error(`登录请求超时，请检查您的代理配置。`));
         });
@@ -120,15 +123,15 @@ doLogin().then(async (cookies) => {
     if (proxyUrl) {
         communityOpts.request = request.defaults({ proxy: proxyUrl });
     }
-    
+
     const community = new SteamCommunity(communityOpts);
     community.setCookies(cookies);
-    
+
     console.log("正在拉取 CSGO 库存信息...");
-    
+
     // 从 session 中提取 64 位 SteamID
     const steamId64 = typeof session.steamID.getSteamID64 === 'function' ? session.steamID.getSteamID64() : session.steamID.toString();
-    
+
     // 730 = CSGO, 2 = Context ID (标准物品库存), false = 包含所有物品(不仅是可交易的)
     community.getUserInventoryContents(steamId64, 730, 2, false, (err, inventory) => {
         if (err) {
@@ -137,7 +140,7 @@ doLogin().then(async (cookies) => {
         }
 
         console.log(`成功拉取到 ${inventory.length} 件物品，正在解析数据...`);
-        
+
         const parsedItems = inventory.map(item => {
             let tradeUnlockTime = null;
             if (item.cache_expiration) {
@@ -165,8 +168,8 @@ doLogin().then(async (cookies) => {
             };
         });
 
-        const inventoryPath = path.resolve(__dirname, 'inventory.json');
-        
+        const inventoryPath = path.resolve(dataDir, 'inventory.json');
+
         if (isUpdate) {
             let oldItems = [];
             if (fs.existsSync(inventoryPath)) {
@@ -174,12 +177,12 @@ doLogin().then(async (cookies) => {
                     const raw = fs.readFileSync(inventoryPath, 'utf8');
                     oldItems = JSON.parse(raw);
                 } catch (e) {
-                    console.error("读取旧 inventory.json 失败，视为空库存处理。");
+                    console.error("读取旧 ./data/inventory.json 失败，视为空库存处理。");
                 }
 
                 const oldIds = new Set(oldItems.map(i => i.id));
                 const newItems = parsedItems.filter(i => !oldIds.has(i.id));
-                
+
                 console.log(`\n================ 新增物品 (${newItems.length} 件) ================`);
                 console.log(JSON.stringify(newItems, null, 2));
                 console.log("==================================================\n");
@@ -187,10 +190,10 @@ doLogin().then(async (cookies) => {
                 console.log("没有找到旧文件，本次获取的全部被视为新增物品：");
                 console.log(JSON.stringify(parsedItems, null, 2));
             }
-            
+
             fs.writeFileSync(inventoryPath, JSON.stringify(parsedItems, null, 2));
             console.log(`最新的库存快照已经更新至 ${inventoryPath}`);
-            
+
         } else {
             fs.writeFileSync(inventoryPath, JSON.stringify(parsedItems, null, 2));
             console.log(`已将完整库存（共 ${parsedItems.length} 件）提取并保存到: ${inventoryPath}`);
