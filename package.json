@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "https-proxy-agent": "^9.1.0",
+    "steam-session": "^1.9.4",
+    "steam-totp": "^2.1.2",
+    "steamcommunity": "^3.50.1"
+  }
+}

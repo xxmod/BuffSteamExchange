@@ -56,14 +56,14 @@ async function fetchSteamData(marketHashName, appid = 730) {
         if (data && data.error === '429') {
             return { volume: 'Steam API 限制(429)', price: 'Steam API 限制(429)' };
         }
-        
+
         let volume = 0;
         let price = '无数据';
 
         if (data && data.volume) {
             volume = parseInt(data.volume.replace(/,/g, ''));
         }
-        
+
         if (data && data.lowest_price) {
             // steam 价格带有货币符号，如 "¥ 28.53"，用正则提取数字
             const match = data.lowest_price.match(/[\d.]+/);
