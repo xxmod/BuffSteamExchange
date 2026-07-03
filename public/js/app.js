@@ -53,6 +53,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (autoConfirmCb) {
             autoConfirmCb.checked = !!settings.autoConfirmListings;
         }
+
+        const buffMaxInput = document.getElementById('setting-buff-max');
+        if (buffMaxInput) buffMaxInput.value = settings.BuffMaxItems || '';
+
+        const buffExcludeInput = document.getElementById('setting-buff-exclude');
+        if (buffExcludeInput) buffExcludeInput.value = settings.BuffExcludeKeywords || '';
     }
 
     document.getElementById('save-env-btn').addEventListener('click', async () => {
@@ -75,10 +81,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', async () => {
             const settings = {
-                autoConfirmListings: document.getElementById('setting-auto-confirm').checked
+                autoConfirmListings: document.getElementById('setting-auto-confirm').checked,
+                BuffMaxItems: document.getElementById('setting-buff-max').value,
+                BuffExcludeKeywords: document.getElementById('setting-buff-exclude').value
             };
             const res = await apiPost('/api/settings', { settings });
-            if (res.success) alert("系统行为配置已保存！");
+            if (res.success) alert("系统配置已保存！");
         });
     }
 

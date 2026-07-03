@@ -72,10 +72,28 @@ function fetchJson(url, cookie = '') {
 }
 
 async function fetchSteamData(marketHashName) {
-    const url = `https://steamcommunity.com/market/priceoverview/?appid=730&currency=23&market_hash_name=${encodeURIComponent(marketHashName)}`;
     try {
-        const data = await fetchJson(url);
+        const { getSteamCommunity } = require('./steam.js');
+        const { community } = await getSteamCommunity();
+        if (!community) {
+            return { volume: '未登录 Steam', price: '未登录 Steam' };
+        }
+        const url = `https://steamcommunity.com/market/priceoverview/?country=CN&currency=23&appid=730&market_hash_name=${encodeURIComponent(marketHashName)}`;
+        
+        const data = await new Promise((resolve) => {
+            community.httpRequest({ uri: url, json: true }, (err, response, body) => {
+                if (err) {
+                    if (err.message && err.message.includes('429')) return resolve({ error: '429' });
+                    return resolve({ error: err.message });
+                }
+                if (response && response.statusCode === 429) return resolve({ error: '429' });
+                resolve(body);
+            });
+        });
+
         if (data && data.error === '429') return { volume: 'Steam API 限制(429)', price: 'Steam API 限制(429)' };
+        if (data && data.error) return { volume: `错误: ${data.error}`, price: `错误: ${data.error}` };
+
         let volume = 0, price = '无数据';
         if (data && data.volume) volume = parseInt(data.volume.replace(/,/g, ''));
         let priceStr = null;
@@ -107,13 +125,25 @@ async function updateBuffItemsInBackground() {
         const envVars = getEnvVars();
         let cookie = envVars.BuffCookie || '';
         cookie = cookie.split(';').map(c => c.trim()).filter(c => c).join('; ');
+
+        const settingsPath = path.join(dataDir, 'settings.json');
+        let buffMaxItems = 1000;
+        let buffExcludeKeywords = [];
+        if (fs.existsSync(settingsPath)) {
+            try {
+                const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+                if (settings.BuffMaxItems) buffMaxItems = parseInt(settings.BuffMaxItems) || 1000;
+                if (settings.BuffExcludeKeywords) {
+                    buffExcludeKeywords = settings.BuffExcludeKeywords.split(',').map(k => k.trim().toLowerCase()).filter(k => k);
+                }
+            } catch(e) {}
+        }
         
         let results = [];
         let pageNum = 1;
-        const maxItems = 1000;
 
-        console.log("[Buff API] [执行过程] 正在获取 Buff 市场按销量排序前 1000 名商品列表...");
-        while (results.length < maxItems) {
+        console.log(`[Buff API] [执行过程] 正在获取 Buff 市场按销量排序前 ${buffMaxItems} 名商品列表...`);
+        while (results.length < buffMaxItems) {
             const url = `https://buff.163.com/api/market/goods?game=csgo&page_num=${pageNum}&sort_by=sell_num.desc`;
             console.log(`[Buff API] [执行过程] 抓取 Buff 第 ${pageNum} 页商品列表...`);
             const data = await fetchJson(url, cookie);
@@ -128,9 +158,16 @@ async function updateBuffItemsInBackground() {
             }
 
             for (const item of items) {
-                if (results.length >= maxItems) break;
+                if (results.length >= buffMaxItems) break;
+                
+                const itemNameLower = item.name.toLowerCase();
+                if (buffExcludeKeywords.some(k => itemNameLower.includes(k))) {
+                    console.log(`[Buff API] [执行过程] 饰品 [${item.name}] 触发排除关键词，跳过抓取并忽略。`);
+                    continue;
+                }
+
                 const hashName = item.market_hash_name || item.name;
-                console.log(`[Buff API] [执行过程] 正在获取饰品 [${item.name}] (ID: ${item.id}) 的 Steam 平台价格与销量...`);
+                console.log(`[Buff API] [执行过程] 正在获取饰品 [${item.name}] (ID: ${item.id}) 的 Steam 平台价格与销量... (${results.length + 1}/${buffMaxItems})`);
                 const steamData = await fetchSteamData(hashName);
                 console.log(`[Buff API] [执行结果] [${item.name}] 获取完毕 -> Steam底价: ${steamData.price}, 销量: ${steamData.volume}`);
                 
@@ -143,7 +180,7 @@ async function updateBuffItemsInBackground() {
                     volume_24h: steamData.volume
                 });
 
-                if (steamData.volume === 'Steam API 限制(429)') {
+                if (steamData.volume === 'Steam API 限制(429)' || (typeof steamData.volume === 'string' && steamData.volume.includes('429'))) {
                     console.log(`[Buff API] [执行过程] 遇到 Steam 429 限制，触发风控保护，等待 5 分钟后再继续...`);
                     await delay(300000); // 5 分钟
                 } else if (results.length % 30 === 0) {
