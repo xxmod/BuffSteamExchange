@@ -43,9 +43,18 @@
                         <button class="button-primary" id="save-env-btn">保存配置</button>
                     </div>
                     <div class="feature-card">
-                        <h3>数据备份与还原</h3>
-                        <p class="body-sm">导出或导入所有设置与数据备份 JSON 文件。</p>
-                        <div class="action-row">
+                        <h3>系统与数据管理</h3>
+                        <p class="body-sm" style="margin-bottom: 16px;">配置自动化行为或导出导入备份数据。</p>
+                        
+                        <div style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="setting-auto-confirm" style="width: 16px; height: 16px; cursor: pointer;">
+                            <label for="setting-auto-confirm" class="body-sm" style="cursor: pointer; margin: 0;">自动确认 Steam 挂单上架 (五分钟循环检测)</label>
+                        </div>
+                        <div style="margin-bottom: 24px;">
+                            <button class="button-primary" id="save-settings-btn">保存系统配置</button>
+                        </div>
+                        
+                        <div class="action-row" style="border-top: 1px solid var(--border-hairline); padding-top: 16px;">
                             <button class="button-secondary" id="export-backup-btn">导出完整备份</button>
                             <label for="import-backup-file" class="button-secondary">导入完整备份</label>
                             <input type="file" id="import-backup-file" accept=".json" style="display:none;">

@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 // const { updateBuffItems } = require('./api/buff'); // Later
 // const { updateSteamInventory } = require('./api/steam'); // Later
+const steamRouter = require('./api/steam');
 
 const dataDir = path.join(__dirname, '../data');
 
@@ -29,7 +30,7 @@ function checkAndRunScheduler() {
         let hasPending = false;
         if (fs.existsSync(inInvPath)) {
             try {
-                const items = JSON.parse(fs.readFileSync(inInvPath, 'utf8'));
+                const items = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt);
                 hasPending = items.some(i => i.status === '待收货');
             } catch (e) {}
         }
@@ -44,8 +45,18 @@ function checkAndRunScheduler() {
     // We will implement this later when steam.js is ready
 }
 
+function checkFiveMinuteTasks() {
+    if (steamRouter.checkPendingConfirmations) {
+        steamRouter.checkPendingConfirmations().catch(e => console.error(`[Scheduler] 5-minute task failed: ${e.message}`));
+    }
+}
+
 // 1 Hour interval
 setInterval(checkAndRunScheduler, 1000 * 60 * 60);
 
+// 5 Minute interval
+setInterval(checkFiveMinuteTasks, 1000 * 60 * 5);
+
 // Initial run
 // checkAndRunScheduler();
+setTimeout(checkFiveMinuteTasks, 5000); // Check shortly after startup

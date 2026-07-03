@@ -335,21 +335,21 @@ router.post('/sell', async (req, res) => {
             if (sellRes.success) {
                 console.log(`[Steam API] [执行结果] [${i+1}/${items.length}] 上架成功！`);
                 successCount++;
-                // Update in_inventory_item.json status to 已挂单
+                // Update in_inventory_item.json status to 待确认
                 const inInvPath = path.join(dataDir, 'in_inventory_item.json');
                 if (fs.existsSync(inInvPath)) {
                     let inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt);
                     let modified = false;
                     inInvItems = inInvItems.map(i => {
                         if (i.assetid === assetid && i.status === '待出售') {
-                            i.status = '已挂单';
+                            i.status = '待确认';
                             i.sell_price_no_fee = priceWithoutFee;
                             i.sell_price_with_fee = priceWithFee;
                             modified = true;
                         }
                         return i;
                     });
-                    if (modified) fs.writeFileSync(inInvPath, JSON.stringify(inInvItems, null, 2), 'utf8');
+                    if (modified) fs.writeFileSync(inInvPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...inInvItems], null, 2), 'utf8');
                 }
             } else {
                 console.error(`[Steam API] [执行结果] [${i+1}/${items.length}] 上架失败: ${sellRes.error}`);
@@ -561,7 +561,7 @@ router.post('/inventory/refresh', async (req, res) => {
                         newInInvItems.push(inItem);
                     } else {
                         // 物品不在Steam底层库存中，说明已经不在账号里了
-                        if (inItem.status === '已挂单') {
+                        if (inItem.status === '已上架' || inItem.status === '已挂单') {
                             console.log(`[Steam API] [执行过程] 饰品 [${inItem.name}] (assetid: ${inItem.assetid}) 已在 Steam 库存中消失，判定为售出。`);
                             soldItems.push({
                                 name: inItem.name,
@@ -571,6 +571,9 @@ router.post('/inventory/refresh', async (req, res) => {
                                 soldAt: new Date().toLocaleString()
                             });
                             updatedCount++;
+                        } else if (inItem.status === '待确认') {
+                            console.log(`[Steam API] [执行过程] 饰品 [${inItem.name}] (assetid: ${inItem.assetid}) 处于“待确认”状态，暂时保留追踪。`);
+                            newInInvItems.push(inItem);
                         } else {
                             console.log(`[Steam API] [执行过程] 饰品 [${inItem.name}] (assetid: ${inItem.assetid}) (状态: ${inItem.status}) 已在 Steam 库存中消失，移出追踪。`);
                             updatedCount++;
@@ -608,4 +611,72 @@ router.post('/inventory/refresh', async (req, res) => {
     }
 });
 
+async function checkPendingConfirmations() {
+    const settingsPath = path.join(dataDir, 'settings.json');
+    let autoConfirm = false;
+    if (fs.existsSync(settingsPath)) {
+        try { autoConfirm = JSON.parse(fs.readFileSync(settingsPath, 'utf8')).autoConfirmListings; } catch(e){}
+    }
+
+    const inInvPath = path.join(dataDir, 'in_inventory_item.json');
+    if (!fs.existsSync(inInvPath)) return;
+    let items = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt);
+    const pendingItems = items.filter(i => i.status === '待确认');
+    if (pendingItems.length === 0) return;
+
+    try {
+        const { community, envVars } = await getSteamCommunity();
+        if (!community || !envVars.IdentitySecret) return;
+
+        const time = Math.floor(Date.now() / 1000);
+        const confKey = SteamTotp.getConfirmationKey(envVars.IdentitySecret, time, 'conf');
+        const allowKey = SteamTotp.getConfirmationKey(envVars.IdentitySecret, time, 'allow');
+
+        if (autoConfirm) {
+            console.log(`[Scheduler] 检测到 ${pendingItems.length} 个待确认饰品且自动确认已开启，正在尝试一键同意...`);
+            await new Promise(resolve => {
+                community.acceptAllConfirmations(time, confKey, allowKey, (err, confs) => {
+                    if (err) console.error(`[Scheduler] 自动确认失败: ${err.message}`);
+                    else console.log(`[Scheduler] 自动确认成功，已处理确认请求。`);
+                    resolve();
+                });
+            });
+        }
+
+        // Verify status
+        const activeConfs = await new Promise(resolve => {
+            community.getConfirmations(time, confKey, (err, confs) => {
+                if (err) {
+                    console.error(`[Scheduler] 获取挂单确认状态失败: ${err.message}`);
+                    resolve(null);
+                } else {
+                    resolve(confs);
+                }
+            });
+        });
+
+        if (!activeConfs) return;
+
+        const activeCreatorIds = activeConfs.map(c => String(c.creator));
+        let modified = false;
+        
+        items = items.map(i => {
+            if (i.status === '待确认' && !activeCreatorIds.includes(String(i.assetid))) {
+                i.status = '已上架';
+                console.log(`[Scheduler] 资产 ${i.assetid} (${i.name}) 已成功上架，状态转为“已上架”`);
+                modified = true;
+            }
+            return i;
+        });
+
+        if (modified) {
+            fs.writeFileSync(inInvPath, JSON.stringify([{_updatedt: new Date().toISOString()}, ...items], null, 2), 'utf8');
+        }
+    } catch (e) {
+        console.error(`[Scheduler] 处理待确认饰品时出错: ${e.message}`);
+    }
+}
+
+router.checkPendingConfirmations = checkPendingConfirmations;
+router.getSteamCommunity = getSteamCommunity;
 module.exports = router;

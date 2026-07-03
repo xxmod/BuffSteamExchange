@@ -48,6 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         });
+        
+        const autoConfirmCb = document.getElementById('setting-auto-confirm');
+        if (autoConfirmCb) {
+            autoConfirmCb.checked = !!settings.autoConfirmListings;
+        }
     }
 
     document.getElementById('save-env-btn').addEventListener('click', async () => {
@@ -56,8 +61,19 @@ document.addEventListener('DOMContentLoaded', () => {
             env[input.getAttribute('data-key')] = input.value;
         });
         const res = await apiPost('/api/settings', { env });
-        if (res.success) alert("环境变量已保存。");
+        if (res.success) alert("环境变量已保存！");
     });
+
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', async () => {
+            const settings = {
+                autoConfirmListings: document.getElementById('setting-auto-confirm').checked
+            };
+            const res = await apiPost('/api/settings', { settings });
+            if (res.success) alert("系统行为配置已保存！");
+        });
+    }
 
     document.getElementById('export-backup-btn').addEventListener('click', () => {
         window.location.href = '/api/settings/export';
