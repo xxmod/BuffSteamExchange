@@ -277,8 +277,9 @@ router.post('/sell', async (req, res) => {
                     });
                     if (priceData) {
                         console.log(`[Steam API] [执行过程] Steam 原始返回数据: ${JSON.stringify(priceData)}`);
-                        if (priceData.lowest_price) {
-                            let lowestNum = parseFloat(priceData.lowest_price.replace(/[^\d.]/g, ''));
+                        let priceStr = priceData.lowest_price || priceData.median_price;
+                        if (priceStr) {
+                            let lowestNum = parseFloat(priceStr.replace(/[^\d.]/g, ''));
                             if (!isNaN(lowestNum) && lowestNum > 0) {
                                 let targetPriceWithFee = Math.round(lowestNum * 100) - 1; // 减 1 分钱
                                 if (targetPriceWithFee < 3) targetPriceWithFee = 3;
