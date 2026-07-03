@@ -96,4 +96,14 @@ router.post('/import', express.json({limit: '50mb'}), (req, res) => {
     res.json({ success: true });
 });
 
+router.post('/restart', (req, res) => {
+    console.log(`[Settings API] 收到重启后端服务请求，正在退出进程以等待外部守护程序重启...`);
+    res.json({ success: true, message: '后端服务正在退出...' });
+    
+    // Give response time to flush before exiting
+    setTimeout(() => {
+        process.exit(0);
+    }, 1000);
+});
+
 module.exports = router;

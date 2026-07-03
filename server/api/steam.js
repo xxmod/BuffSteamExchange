@@ -79,13 +79,8 @@ router.post('/owned/delete', (req, res) => {
     const p = path.join(dataDir, 'in_inventory_item.json');
     if (fs.existsSync(p)) {
         let items = JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt);
-        // Find and change status to user-used
-        items = items.map(i => {
-            if (i.goods_id === goods_id && i.assetid === assetid) {
-                i.status = '用户自用';
-            }
-            return i;
-        });
+        // Actually delete the item
+        items = items.filter(i => !(i.goods_id === goods_id && i.assetid === assetid));
         fs.writeFileSync(p, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...items], null, 2), 'utf8');
     }
     res.json({ success: true });

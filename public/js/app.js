@@ -64,6 +64,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (res.success) alert("环境变量已保存！");
     });
 
+    document.getElementById('restart-backend-btn').addEventListener('click', async () => {
+        if (confirm("确定要重启后端服务吗？\n（如果您是使用 npm start 启动的服务，后台将在1秒后自动重启，网页将会暂时无响应，稍后刷新即可）")) {
+            await apiPost('/api/settings/restart', {});
+            alert("后端重启指令已发送！如果您使用 npm start 运行，服务将自动恢复。稍等几秒后请刷新网页。");
+        }
+    });
+
     const saveSettingsBtn = document.getElementById('save-settings-btn');
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', async () => {
@@ -265,34 +272,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tbody.innerHTML = filtered.map(item => `
             <tr>
+                <td><input type="checkbox" class="manual-add-checkbox" data-asset="${item.id}"></td>
                 <td>${item.name}</td>
                 <td><span style="color:${item.tradable?'var(--colors-success)':'var(--colors-error)'}">${item.tradable?'可交易':'不可交易'}</span></td>
-                <td style="white-space: nowrap;">
-                    <button class="button-secondary add-this-item-btn" style="padding: 4px 10px; height: auto; width: 100%; white-space: nowrap;" data-asset="${item.id}">添加到持有</button>
-                </td>
+                <td><input type="number" class="text-input manual-add-price" data-asset="${item.id}" placeholder="0" style="width: 100%;"></td>
             </tr>
         `).join('');
-
-        document.querySelectorAll('.add-this-item-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                const assetid = e.target.getAttribute('data-asset');
-                let buffPrice = prompt("请输入此饰品的购买成本(元)：", "0");
-                if (buffPrice === null) return;
-                buffPrice = parseFloat(buffPrice) || 0;
-
-                const res = await apiPost('/api/steam/owned/add-manual', { assetid, buff_price: buffPrice });
-                if (res.success) {
-                    alert('添加成功！');
-                    manualAddModal.style.display = 'none';
-                    loadOwned();
-                } else {
-                    alert('添加失败: ' + res.error);
-                }
-            });
-        });
     }
 
     document.getElementById('search-manual-add-input').addEventListener('input', renderManualAddList);
+
+    document.getElementById('manual-add-select-all').addEventListener('change', (e) => {
+        document.querySelectorAll('.manual-add-checkbox').forEach(cb => cb.checked = e.target.checked);
+    });
+
+    document.getElementById('bulk-manual-add-btn').addEventListener('click', async () => {
+        const checkboxes = document.querySelectorAll('.manual-add-checkbox:checked');
+        if (checkboxes.length === 0) {
+            alert('请至少选择一件饰品');
+            return;
+        }
+
+        const btn = document.getElementById('bulk-manual-add-btn');
+        btn.disabled = true;
+        btn.textContent = '正在添加...';
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const cb of checkboxes) {
+            const assetid = cb.getAttribute('data-asset');
+            const priceInput = document.querySelector(`.manual-add-price[data-asset="${assetid}"]`);
+            let buffPrice = parseFloat(priceInput.value) || 0;
+
+            const res = await apiPost('/api/steam/owned/add-manual', { assetid, buff_price: buffPrice });
+            if (res.success) successCount++;
+            else failCount++;
+        }
+
+        btn.disabled = false;
+        btn.textContent = '批量添加到持有';
+        alert(`添加完成！成功: ${successCount}, 失败: ${failCount}`);
+        manualAddModal.style.display = 'none';
+        loadOwned();
+    });
 
     document.getElementById('open-manual-add-btn').addEventListener('click', async () => {
         manualAddModal.style.display = 'flex';

@@ -40,7 +40,10 @@
                         <form id="env-form" class="config-form">
                             <!-- Dynamically loaded inputs -->
                         </form>
-                        <button class="button-primary" id="save-env-btn">保存配置</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="button-primary" id="save-env-btn">保存配置</button>
+                            <button class="button-secondary" id="restart-backend-btn" style="color: var(--colors-error); border-color: var(--colors-error);">重启后端</button>
+                        </div>
                     </div>
                     <div class="feature-card">
                         <h3>系统与数据管理</h3>
@@ -233,16 +236,18 @@
             <span class="close-btn" id="close-manual-add-modal">&times;</span>
             <h3 style="flex-shrink: 0;">从 Steam 库存中选择要添加的饰品</h3>
             <p class="body-sm" style="margin-bottom: 16px; flex-shrink: 0;">选择一件物品，将其加入到本系统的持有追踪列表中。</p>
-            <div class="controls-band" style="margin-bottom: 12px; display: flex; justify-content: flex-end; flex-shrink: 0;">
+            <div class="controls-band" style="margin-bottom: 12px; display: flex; justify-content: space-between; flex-shrink: 0; align-items: center;">
+                <button class="button-primary" id="bulk-manual-add-btn">批量添加到持有</button>
                 <input type="text" class="text-input" id="search-manual-add-input" placeholder="输入饰品名称搜索..." style="width: 250px;">
             </div>
             <div style="flex: 1; overflow-y: auto; min-height: 0;">
                 <table class="data-table">
                     <thead>
                         <tr>
+                            <th style="width: 40px;"><input type="checkbox" id="manual-add-select-all"></th>
                             <th>物品名称</th>
                             <th style="width: 100px;">状态</th>
-                            <th style="width: 120px;">操作</th>
+                            <th style="width: 150px;">购买金额</th>
                         </tr>
                     </thead>
                     <tbody id="manual-add-list-body">
