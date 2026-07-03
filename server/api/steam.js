@@ -64,13 +64,13 @@ async function getSteamCommunity() {
 
 router.get('/inventory', (req, res) => {
     const p = path.join(dataDir, 'inventory.json');
-    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt));
     else res.json([]);
 });
 
 router.get('/owned', (req, res) => {
     const p = path.join(dataDir, 'in_inventory_item.json');
-    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt));
     else res.json([]);
 });
 
@@ -78,7 +78,7 @@ router.post('/owned/delete', (req, res) => {
     const { goods_id, assetid } = req.body;
     const p = path.join(dataDir, 'in_inventory_item.json');
     if (fs.existsSync(p)) {
-        let items = JSON.parse(fs.readFileSync(p, 'utf8'));
+        let items = JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt);
         // Find and change status to user-used
         items = items.map(i => {
             if (i.goods_id === goods_id && i.assetid === assetid) {
@@ -86,7 +86,7 @@ router.post('/owned/delete', (req, res) => {
             }
             return i;
         });
-        fs.writeFileSync(p, JSON.stringify(items, null, 2), 'utf8');
+        fs.writeFileSync(p, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...items], null, 2), 'utf8');
     }
     res.json({ success: true });
 });
@@ -96,7 +96,7 @@ router.post('/owned/manual-bind', (req, res) => {
     const { goods_id, purchasedAt, assetid } = req.body;
     const p = path.join(dataDir, 'in_inventory_item.json');
     if (fs.existsSync(p)) {
-        let items = JSON.parse(fs.readFileSync(p, 'utf8'));
+        let items = JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt);
         let found = false;
         items = items.map(i => {
             if (i.goods_id === goods_id && i.purchasedAt === purchasedAt && i.status === '待收货') {
@@ -108,7 +108,7 @@ router.post('/owned/manual-bind', (req, res) => {
             return i;
         });
         if (found) {
-            fs.writeFileSync(p, JSON.stringify(items, null, 2), 'utf8');
+            fs.writeFileSync(p, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...items], null, 2), 'utf8');
             return res.json({ success: true });
         } else {
             return res.status(404).json({ error: "找不到匹配的待收货物品记录" });
@@ -125,7 +125,7 @@ router.post('/owned/add-manual', (req, res) => {
     if (!fs.existsSync(invPath)) {
         return res.status(400).json({ error: "尚未获取 Steam 底层库存，请先刷新库存" });
     }
-    const inventory = JSON.parse(fs.readFileSync(invPath, 'utf8'));
+    const inventory = JSON.parse(fs.readFileSync(invPath, 'utf8')).filter(i => !i._updatedt);
     const steamItem = inventory.find(i => i.id === String(assetid));
     if (!steamItem) {
         return res.status(404).json({ error: "在底层库存中未找到指定的 Asset ID，请先刷新底层库存" });
@@ -134,7 +134,7 @@ router.post('/owned/add-manual', (req, res) => {
     const p = path.join(dataDir, 'in_inventory_item.json');
     let items = [];
     if (fs.existsSync(p)) {
-        items = JSON.parse(fs.readFileSync(p, 'utf8'));
+        items = JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt);
     }
     
     // Check if already exists
@@ -157,14 +157,14 @@ router.post('/owned/add-manual', (req, res) => {
     };
     
     items.push(newItem);
-    fs.writeFileSync(p, JSON.stringify(items, null, 2), 'utf8');
+    fs.writeFileSync(p, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...items], null, 2), 'utf8');
     console.log(`[Steam API] [执行结果] 手动添加成功: ${newItem.name}`);
     res.json({ success: true });
 });
 
 router.get('/history', (req, res) => {
     const p = path.join(dataDir, 'sell_history.json');
-    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
+    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt));
     else res.json([]);
 });
 
@@ -245,7 +245,7 @@ router.post('/sell', async (req, res) => {
         let inventory = [];
         const invPath = path.join(dataDir, 'inventory.json');
         if (fs.existsSync(invPath)) {
-            try { inventory = JSON.parse(fs.readFileSync(invPath, 'utf8')); } catch(e) {}
+            try { inventory = JSON.parse(fs.readFileSync(invPath, 'utf8')).filter(i => !i._updatedt); } catch(e) {}
         }
         
         let successCount = 0;
@@ -338,7 +338,7 @@ router.post('/sell', async (req, res) => {
                 // Update in_inventory_item.json status to 已挂单
                 const inInvPath = path.join(dataDir, 'in_inventory_item.json');
                 if (fs.existsSync(inInvPath)) {
-                    let inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8'));
+                    let inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt);
                     let modified = false;
                     inInvItems = inInvItems.map(i => {
                         if (i.assetid === assetid && i.status === '待出售') {
@@ -517,6 +517,8 @@ router.post('/inventory/refresh', async (req, res) => {
             };
         });
         
+        // Always add _updatedt at index 0 for the inventory file
+        parsedItems.unshift({ _updatedt: new Date().toISOString() });
         const invPath = path.join(dataDir, 'inventory.json');
         fs.writeFileSync(invPath, JSON.stringify(parsedItems, null, 2), 'utf8');
         console.log(`[Steam API] [执行过程] 最新库存数据已写入至 ${invPath}`);
@@ -526,7 +528,7 @@ router.post('/inventory/refresh', async (req, res) => {
         if (fs.existsSync(inInvPath)) {
             console.log(`[Steam API] [执行过程] 正在比对 in_inventory_item.json 中的 "待收货" 物品与最新库存...`);
             let inInvItems = [];
-            try { inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')); } catch(e){}
+            try { inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt); } catch(e){}
             
             let updatedCount = 0;
             const availableSteamItems = [...parsedItems];
@@ -583,22 +585,23 @@ router.post('/inventory/refresh', async (req, res) => {
                 const historyPath = path.join(dataDir, 'sell_history.json');
                 let history = [];
                 if (fs.existsSync(historyPath)) {
-                    try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch(e){}
+                    try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')).filter(i => !i._updatedt); } catch(e){}
                 }
                 history.push(...soldItems);
-                fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
+                fs.writeFileSync(historyPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...history], null, 2), 'utf8');
                 console.log(`[Steam API] [执行过程] 新增 ${soldItems.length} 条出售历史记录。`);
             }
 
+            // Always write the in_inventory_item.json to update its _updatedt
+            fs.writeFileSync(inInvPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...newInInvItems], null, 2), 'utf8');
             if (updatedCount > 0) {
-                fs.writeFileSync(inInvPath, JSON.stringify(newInInvItems, null, 2), 'utf8');
                 console.log(`[Steam API] [执行过程] 共发生 ${updatedCount} 次资产追踪表变动，已保存。`);
             } else {
                 console.log(`[Steam API] [执行过程] 未发现任何需要更新的待收货/待出售物品。`);
             }
         }
 
-        console.log(`[Steam API] [执行总结] 刷新库存任务完毕，返回最新总数: ${parsedItems.length}`);
+        console.log(`[Steam API] [执行总结] 刷新库存任务完毕，返回最新总数: ${parsedItems.length - 1}`);
         res.json({ success: true, count: parsedItems.length, message: "库存刷新成功" });
     } catch(e) {
         res.status(500).json({ error: e.message });

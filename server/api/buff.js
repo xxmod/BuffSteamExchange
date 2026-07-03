@@ -159,7 +159,7 @@ async function updateBuffItemsInBackground() {
         }
 
         console.log(`[Buff API] [执行结果] 过滤逻辑执行完毕。剩余可用饰品 ${filteredItems.length} 件。正在写入本地存储...`);
-        fs.writeFileSync(buffPath, JSON.stringify(filteredItems, null, 2));
+        fs.writeFileSync(buffPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...filteredItems], null, 2));
         console.log(`[Buff API] [执行结果] 任务圆满完成。本次更新已保存至 ${buffPath}`);
     } catch (e) {
         console.error(`[Buff API] [执行结果] 后台更新任务遭遇崩溃失败: ${e.message}`);
@@ -313,7 +313,7 @@ async function executeBuy(itemId, number, payment, itemInfo) {
             const inInvPath = path.join(dataDir, 'in_inventory_item.json');
             let invItems = [];
             if (fs.existsSync(inInvPath)) {
-                try { invItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')); } catch (e) {}
+                try { invItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt); } catch (e) {}
             }
             invItems.push({
                 goods_id: String(itemId),
@@ -325,7 +325,7 @@ async function executeBuy(itemId, number, payment, itemInfo) {
                 tradeUnlockTime: null,
                 purchasedAt: new Date().toISOString()
             });
-            fs.writeFileSync(inInvPath, JSON.stringify(invItems, null, 2), 'utf8');
+            fs.writeFileSync(inInvPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...invItems], null, 2), 'utf8');
             console.log(`[Buff API] [执行结果] 资产追踪文件更新完毕。`);
 
         } else {
@@ -353,7 +353,7 @@ async function executeBuy(itemId, number, payment, itemInfo) {
 router.get('/items', (req, res) => {
     if (fs.existsSync(buffPath)) {
         try {
-            const data = JSON.parse(fs.readFileSync(buffPath, 'utf8'));
+            const data = JSON.parse(fs.readFileSync(buffPath, 'utf8')).filter(i => !i._updatedt);
             res.json(data);
         } catch (e) {
             res.status(500).json({ error: "Failed to parse buff_item.json" });
