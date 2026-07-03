@@ -524,7 +524,10 @@ router.post('/inventory/refresh', async (req, res) => {
             let updatedCount = 0;
             const availableSteamItems = [...parsedItems];
 
-            inInvItems = inInvItems.map(inItem => {
+            const newInInvItems = [];
+            const soldItems = [];
+
+            for (let inItem of inInvItems) {
                 if (inItem.status === '待收货') {
                     const matchIndex = availableSteamItems.findIndex(s => s.name === inItem.name);
                     if (matchIndex !== -1) {
@@ -535,8 +538,9 @@ router.post('/inventory/refresh', async (req, res) => {
                         updatedCount++;
                         console.log(`[Steam API] [执行过程] 匹配成功！将饰品 [${inItem.name}] 与底层 assetid [${matchedSteam.id}] 绑定，状态更新为 "待出售"`);
                     }
+                    newInInvItems.push(inItem);
                 } else if (inItem.assetid) {
-                    // 已绑定的物品（如 待出售），每次刷新库存时更新其最新的解锁时间和相关信息
+                    // 已绑定的物品（如 待出售，已挂单），每次刷新库存时更新其最新的解锁时间和相关信息
                     const matchIndex = availableSteamItems.findIndex(s => s.id === inItem.assetid);
                     if (matchIndex !== -1) {
                         const matchedSteam = availableSteamItems[matchIndex];
@@ -545,13 +549,42 @@ router.post('/inventory/refresh', async (req, res) => {
                             updatedCount++;
                             console.log(`[Steam API] [执行过程] 已更新绑定的饰品 [${inItem.name}] 的解锁时间为 ${matchedSteam.tradeUnlockTime || 'null'}`);
                         }
+                        newInInvItems.push(inItem);
+                    } else {
+                        // 物品不在Steam底层库存中，说明已经不在账号里了
+                        if (inItem.status === '已挂单') {
+                            console.log(`[Steam API] [执行过程] 饰品 [${inItem.name}] (assetid: ${inItem.assetid}) 已在 Steam 库存中消失，判定为售出。`);
+                            soldItems.push({
+                                name: inItem.name,
+                                buff_price: inItem.buff_price,
+                                sell_price_with_fee: inItem.sell_price_with_fee,
+                                sell_price_no_fee: inItem.sell_price_no_fee,
+                                soldAt: new Date().toLocaleString()
+                            });
+                            updatedCount++;
+                        } else {
+                            console.log(`[Steam API] [执行过程] 饰品 [${inItem.name}] (assetid: ${inItem.assetid}) (状态: ${inItem.status}) 已在 Steam 库存中消失，移出追踪。`);
+                            updatedCount++;
+                        }
                     }
+                } else {
+                    newInInvItems.push(inItem);
                 }
-                return inItem;
-            });
+            }
+
+            if (soldItems.length > 0) {
+                const historyPath = path.join(dataDir, 'sell_history.json');
+                let history = [];
+                if (fs.existsSync(historyPath)) {
+                    try { history = JSON.parse(fs.readFileSync(historyPath, 'utf8')); } catch(e){}
+                }
+                history.push(...soldItems);
+                fs.writeFileSync(historyPath, JSON.stringify(history, null, 2), 'utf8');
+                console.log(`[Steam API] [执行过程] 新增 ${soldItems.length} 条出售历史记录。`);
+            }
 
             if (updatedCount > 0) {
-                fs.writeFileSync(inInvPath, JSON.stringify(inInvItems, null, 2), 'utf8');
+                fs.writeFileSync(inInvPath, JSON.stringify(newInInvItems, null, 2), 'utf8');
                 console.log(`[Steam API] [执行过程] 共发生 ${updatedCount} 次资产追踪表变动，已保存。`);
             } else {
                 console.log(`[Steam API] [执行过程] 未发现任何需要更新的待收货/待出售物品。`);
