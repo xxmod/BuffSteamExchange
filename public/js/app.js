@@ -105,9 +105,21 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function sortAndRenderBuffItems() {
         let items = [...buffItems];
-        // Apply search filter if any
-        const q = document.getElementById('search-buff-input').value.toLowerCase();
-        if (q) items = items.filter(i => i.name.toLowerCase().includes(q));
+        // Apply search filters if any
+        const qInclude = document.getElementById('search-buff-input').value.toLowerCase();
+        const qExclude = document.getElementById('exclude-buff-input').value.toLowerCase();
+        
+        if (qInclude) {
+            // Support multiple include keywords separated by space
+            const includes = qInclude.split(/\s+/).filter(k => k);
+            items = items.filter(i => includes.every(k => i.name.toLowerCase().includes(k)));
+        }
+        
+        if (qExclude) {
+            // Support multiple exclude keywords separated by space
+            const excludes = qExclude.split(/\s+/).filter(k => k);
+            items = items.filter(i => !excludes.some(k => i.name.toLowerCase().includes(k)));
+        }
 
         // Sort
         items.sort((a, b) => {
@@ -159,6 +171,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.getElementById('search-buff-input').addEventListener('input', () => {
+        sortAndRenderBuffItems();
+    });
+
+    document.getElementById('exclude-buff-input').addEventListener('input', () => {
         sortAndRenderBuffItems();
     });
 
@@ -426,5 +442,5 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Initial load ---
-    loadSettings();
+    loadOwned();
 });

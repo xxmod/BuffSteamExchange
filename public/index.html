@@ -16,20 +16,20 @@
                 <span class="brand-name">BuffSteam</span>
             </div>
             <ul class="nav-links">
-                <li class="nav-item active" data-page="settings">设置与配置</li>
+                <li class="nav-item active" data-page="owned">持有饰品</li>
                 <li class="nav-item" data-page="buy">购买饰品</li>
                 <li class="nav-item" data-page="inventory">Steam 库存</li>
-                <li class="nav-item" data-page="owned">持有饰品</li>
                 <li class="nav-item" data-page="account">账号管理</li>
                 <li class="nav-item" data-page="history">出售历史</li>
                 <li class="nav-item" data-page="logs">运行日志</li>
+                <li class="nav-item" data-page="settings">设置与配置</li>
             </ul>
         </nav>
 
         <!-- Main Content Area -->
         <main class="content">
             <!-- Settings Page -->
-            <section id="page-settings" class="page active">
+            <section id="page-settings" class="page">
                 <div class="hero-band">
                     <h1>系统设置</h1>
                     <p class="subtitle">配置代理与核心环境变量</p>
@@ -70,10 +70,13 @@
                     <p class="subtitle">从 Buff 市场扫描并下单</p>
                 </div>
                 <div class="content-body">
-                    <div class="controls-band">
-                        <button class="button-primary" id="refresh-buff-btn">强制更新商品列表</button>
-                        <input type="text" class="text-input" id="search-buff-input" placeholder="筛选物品名...">
-                    </div>
+                      <div class="controls-band">
+                          <button class="button-primary" id="refresh-buff-btn">强制更新商品列表</button>
+                          <div style="display: flex; gap: 8px; flex: 1;">
+                              <input type="text" class="text-input" id="search-buff-input" placeholder="包含关键字..." style="flex: 1;">
+                              <input type="text" class="text-input" id="exclude-buff-input" placeholder="排除关键字..." style="flex: 1;">
+                          </div>
+                      </div>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -118,7 +121,7 @@
             </section>
 
             <!-- Owned Items Page -->
-            <section id="page-owned" class="page">
+            <section id="page-owned" class="page active">
                 <div class="hero-band">
                     <h1>系统持有饰品</h1>
                     <p class="subtitle">通过本系统追踪购买的持有饰品</p>
