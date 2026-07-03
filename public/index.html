@@ -115,6 +115,7 @@
                     <p class="subtitle">通过本系统追踪购买的持有饰品</p>
                 </div>
                 <div class="content-body">
+                    <button class="button-secondary" id="open-manual-add-btn" style="margin-bottom: 16px;">+ 手动添加饰品</button>
                     <div class="table-container">
                         <table class="data-table">
                             <thead>
@@ -211,6 +212,32 @@
                 <!-- QR Link or Image -->
             </div>
             <p style="text-align:center;">支付成功后，系统会自动关闭此窗口。</p>
+        </div>
+    </div>
+
+    <!-- Manual Add Modal -->
+    <div id="manual-add-modal" class="modal">
+        <div class="modal-content feature-card" style="max-width: 800px; width: 90%; max-height: 90vh; display: flex; flex-direction: column; margin: auto;">
+            <span class="close-btn" id="close-manual-add-modal">&times;</span>
+            <h3 style="flex-shrink: 0;">从 Steam 库存中选择要添加的饰品</h3>
+            <p class="body-sm" style="margin-bottom: 16px; flex-shrink: 0;">选择一件物品，将其加入到本系统的持有追踪列表中。</p>
+            <div class="controls-band" style="margin-bottom: 12px; display: flex; justify-content: flex-end; flex-shrink: 0;">
+                <input type="text" class="text-input" id="search-manual-add-input" placeholder="输入饰品名称搜索..." style="width: 250px;">
+            </div>
+            <div style="flex: 1; overflow-y: auto; min-height: 0;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>物品名称</th>
+                            <th style="width: 100px;">状态</th>
+                            <th style="width: 120px;">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="manual-add-list-body">
+                        <!-- JS injected -->
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 

@@ -110,6 +110,51 @@ router.post('/owned/manual-bind', (req, res) => {
     res.status(404).json({ error: "资产追踪文件不存在" });
 });
 
+router.post('/owned/add-manual', (req, res) => {
+    console.log(`[Steam API] 收到手动添加饰品请求`);
+    const { assetid, buff_price } = req.body;
+    
+    const invPath = path.join(dataDir, 'inventory.json');
+    if (!fs.existsSync(invPath)) {
+        return res.status(400).json({ error: "尚未获取 Steam 底层库存，请先刷新库存" });
+    }
+    const inventory = JSON.parse(fs.readFileSync(invPath, 'utf8'));
+    const steamItem = inventory.find(i => i.id === String(assetid));
+    if (!steamItem) {
+        return res.status(404).json({ error: "在底层库存中未找到指定的 Asset ID，请先刷新底层库存" });
+    }
+
+    const p = path.join(dataDir, 'in_inventory_item.json');
+    let items = [];
+    if (fs.existsSync(p)) {
+        items = JSON.parse(fs.readFileSync(p, 'utf8'));
+    }
+    
+    // Check if already exists
+    if (items.find(i => i.assetid === String(assetid))) {
+        return res.status(400).json({ error: "该饰品已经存在于持有列表中" });
+    }
+    
+    // Generate a pseudo goods_id since it's manual
+    const fakeGoodsId = 'manual_' + Date.now().toString().slice(-6);
+
+    const newItem = {
+        goods_id: fakeGoodsId,
+        name: steamItem.name,
+        buff_price: parseFloat(buff_price) || 0,
+        steam_price: 0,
+        status: "待出售",
+        assetid: steamItem.id,
+        tradeUnlockTime: steamItem.tradeUnlockTime,
+        purchasedAt: new Date().toISOString()
+    };
+    
+    items.push(newItem);
+    fs.writeFileSync(p, JSON.stringify(items, null, 2), 'utf8');
+    console.log(`[Steam API] [执行结果] 手动添加成功: ${newItem.name}`);
+    res.json({ success: true });
+});
+
 router.get('/history', (req, res) => {
     const p = path.join(dataDir, 'sell_history.json');
     if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
@@ -169,20 +214,92 @@ router.post('/confirm', async (req, res) => {
 });
 
 router.post('/sell', async (req, res) => {
-    const { items } = req.body; // array of { assetid, priceWithoutFee }
+    const { items } = req.body; // array of { assetid, priceWithoutFee, market_hash_name, auto_price }
     console.log(`[Steam API] 收到批量挂单上架请求，共计处理 ${items ? items.length : 0} 件物品`);
     if (!items || !Array.isArray(items)) return res.status(400).json({ error: "Invalid items array" });
+
+    function calcPriceWithoutFee(targetWithFeeCents) {
+        let p = Math.floor(targetWithFeeCents / 1.15);
+        while (true) {
+            let f1 = Math.max(1, Math.floor(p * 0.05));
+            let f2 = Math.max(1, Math.floor(p * 0.10));
+            let total = p + f1 + f2;
+            if (total === targetWithFeeCents) return p;
+            if (total > targetWithFeeCents) return p - 1;
+            p++;
+        }
+    }
 
     try {
         const { community } = await getSteamCommunity();
         const results = [];
         
+        // Load inventory to look up market_hash_name
+        let inventory = [];
+        const invPath = path.join(dataDir, 'inventory.json');
+        if (fs.existsSync(invPath)) {
+            try { inventory = JSON.parse(fs.readFileSync(invPath, 'utf8')); } catch(e) {}
+        }
+        
         let successCount = 0;
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            const { assetid, priceWithoutFee } = item;
+            let { assetid, priceWithoutFee, auto_price } = item;
+            
+            const invItem = inventory.find(inv => inv.id === String(assetid));
+            const market_hash_name = invItem ? invItem.market_hash_name : item.market_hash_name;
+            
+            if (auto_price && market_hash_name) {
+                console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 正在获取 ${market_hash_name} 的实时最低价...`);
+                try {
+                    const priceData = await new Promise((resolve) => {
+                        community.httpRequest({
+                            uri: `https://steamcommunity.com/market/priceoverview/?country=CN&currency=23&appid=730&market_hash_name=${encodeURIComponent(market_hash_name)}`,
+                            json: true
+                        }, (err, response, body) => {
+                            if (err) {
+                                console.log(`[Steam API] [执行过程] HTTP Error: ${err.message}`);
+                                return resolve(null);
+                            }
+                            if (!body || !body.success) {
+                                console.log(`[Steam API] [执行过程] Steam 接口返回失败. Body: ${JSON.stringify(body)}`);
+                                return resolve(null);
+                            }
+                            resolve(body);
+                        });
+                    });
+                    if (priceData) {
+                        console.log(`[Steam API] [执行过程] Steam 原始返回数据: ${JSON.stringify(priceData)}`);
+                        if (priceData.lowest_price) {
+                            let lowestNum = parseFloat(priceData.lowest_price.replace(/[^\d.]/g, ''));
+                            if (!isNaN(lowestNum) && lowestNum > 0) {
+                                let targetPriceWithFee = Math.round(lowestNum * 100) - 1; // 减 1 分钱
+                                if (targetPriceWithFee < 3) targetPriceWithFee = 3;
+                                priceWithoutFee = calcPriceWithoutFee(targetPriceWithFee);
+                                console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 获取成功: Steam 底价 ¥${lowestNum}，挂单价 ¥${(targetPriceWithFee/100).toFixed(2)}，到手价 ¥${(priceWithoutFee/100).toFixed(2)}`);
+                            } else {
+                                throw new Error("价格解析失败");
+                            }
+                        } else {
+                            throw new Error("未能获取到价格数据，可能物品暂无在售或流控。");
+                        }
+                    } else {
+                        throw new Error("价格请求返回为空");
+                    }
+                } catch (e) {
+                    console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 实时获取价格失败，终止上架: ${e.message}`);
+                    results.push({ assetid, success: false, error: "无法获取最新售价: " + e.message });
+                    continue;
+                }
+            }
+
+            if (!priceWithoutFee || priceWithoutFee <= 0) {
+                results.push({ assetid, success: false, error: "Invalid price calculation" });
+                continue;
+            }
+
             const priceWithFee = priceWithoutFee + Math.max(1, Math.floor(priceWithoutFee * 0.05)) + Math.max(1, Math.floor(priceWithoutFee * 0.10));
-            console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 正在尝试上架物品 assetid: ${assetid}，税前单价: ${priceWithoutFee / 100}`);
+            console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 正在尝试上架物品 assetid: ${assetid}，到手价: ¥${(priceWithoutFee / 100).toFixed(2)}`);
             
             const sellRes = await new Promise((resolve) => {
                 community.httpRequestPost({
@@ -386,6 +503,7 @@ router.post('/inventory/refresh', async (req, res) => {
             return {
                 id: asset.assetid,
                 name: desc.market_name || desc.name || 'Unknown Item',
+                market_hash_name: desc.market_hash_name || desc.market_name || desc.name,
                 tradable: desc.tradable === 1,
                 tradeUnlockTime,
                 wear

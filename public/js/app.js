@@ -214,19 +214,101 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    const manualAddModal = document.getElementById('manual-add-modal');
+    let manualAddInventory = [];
+    
+    function renderManualAddList() {
+        const tbody = document.getElementById('manual-add-list-body');
+        const q = document.getElementById('search-manual-add-input').value.toLowerCase();
+        
+        let filtered = manualAddInventory;
+        if (q) {
+            filtered = filtered.filter(i => i.name.toLowerCase().includes(q));
+        }
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">没有找到匹配的饰品</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = filtered.map(item => `
+            <tr>
+                <td>${item.name}</td>
+                <td><span style="color:${item.tradable?'var(--colors-success)':'var(--colors-error)'}">${item.tradable?'可交易':'不可交易'}</span></td>
+                <td style="white-space: nowrap;">
+                    <button class="button-secondary add-this-item-btn" style="padding: 4px 10px; height: auto; width: 100%; white-space: nowrap;" data-asset="${item.id}">添加到持有</button>
+                </td>
+            </tr>
+        `).join('');
+
+        document.querySelectorAll('.add-this-item-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const assetid = e.target.getAttribute('data-asset');
+                let buffPrice = prompt("请输入此饰品的购买成本(元)：", "0");
+                if (buffPrice === null) return;
+                buffPrice = parseFloat(buffPrice) || 0;
+
+                const res = await apiPost('/api/steam/owned/add-manual', { assetid, buff_price: buffPrice });
+                if (res.success) {
+                    alert('添加成功！');
+                    manualAddModal.style.display = 'none';
+                    loadOwned();
+                } else {
+                    alert('添加失败: ' + res.error);
+                }
+            });
+        });
+    }
+
+    document.getElementById('search-manual-add-input').addEventListener('input', renderManualAddList);
+
+    document.getElementById('open-manual-add-btn').addEventListener('click', async () => {
+        manualAddModal.style.display = 'flex';
+        document.getElementById('search-manual-add-input').value = '';
+        const tbody = document.getElementById('manual-add-list-body');
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">正在加载底层库存，请稍候...</td></tr>';
+        
+        manualAddInventory = await apiGet('/api/steam/inventory');
+        if (!manualAddInventory || manualAddInventory.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">暂无库存数据，请先前往“Steam 库存”页面刷新。</td></tr>';
+            return;
+        }
+
+        renderManualAddList();
+    });
+
+    document.getElementById('close-manual-add-modal').addEventListener('click', () => {
+        manualAddModal.style.display = 'none';
+    });
+
     document.getElementById('execute-sell-btn').addEventListener('click', async () => {
         const selected = [];
         const checkboxes = document.querySelectorAll('.owned-checkbox:checked');
-        checkboxes.forEach(cb => {
+
+        for (let cb of checkboxes) {
             const item = ownedItems[cb.getAttribute('data-index')];
-            // Calc expected price (steam_min_price - 0.01) - but we need real-time steam price ideally.
-            // For now, using cached steam_price * 100 for cents minus 1.
-            const priceWithoutFee = Math.round(parseFloat(item.steam_price) * 100) - 1; 
-            selected.push({ assetid: item.assetid, priceWithoutFee });
-        });
+            selected.push({ assetid: item.assetid, market_hash_name: item.name, auto_price: true });
+        }
+
         if (selected.length === 0) return alert("没有勾选可售卖的物品。");
-        await apiPost('/api/steam/sell', { items: selected });
-        alert("市场挂单请求已提交！");
+        
+        alert("正在获取底层实时价格并挂单上架...请稍候！");
+        const res = await apiPost('/api/steam/sell', { items: selected });
+        
+        if (!res.success) {
+            return alert("上架请求遇到严重错误: " + res.error);
+        }
+
+        const failed = res.results.filter(r => !r.success);
+        const success = res.results.filter(r => r.success);
+
+        if (failed.length > 0) {
+            alert(`挂单任务结束。\n成功: ${success.length} 件\n失败: ${failed.length} 件\n详情请查看运行日志。`);
+        } else {
+            alert("市场挂单请求已全部成功提交！请前往右侧【账号管理】->【待确认交易列表】中点击刷新并一键同意。");
+        }
+        
+        loadOwned();
     });
 
     // --- Steam Inventory ---
