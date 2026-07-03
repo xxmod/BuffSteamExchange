@@ -9,6 +9,34 @@ const PORT = 9998;
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// Basic Auth Middleware
+app.use((req, res, next) => {
+    // Exclude preflight requests
+    if (req.method === 'OPTIONS') return next();
+
+    let username = 'admin';
+    let password = '123456';
+    const settingsPath = path.join(__dirname, '../data/settings.json');
+    if (fs.existsSync(settingsPath)) {
+        try {
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            if (settings.AuthUsername) username = settings.AuthUsername;
+            if (settings.AuthPassword) password = settings.AuthPassword;
+        } catch(e) {}
+    }
+
+    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    const [login, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
+
+    if (login && pwd && login === username && pwd === password) {
+        return next();
+    }
+
+    res.set('WWW-Authenticate', 'Basic realm="BuffSteam Exchange"');
+    res.status(401).send('Authentication required.');
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Request logging middleware

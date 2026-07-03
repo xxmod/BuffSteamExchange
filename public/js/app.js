@@ -75,6 +75,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const buffExcludeInput = document.getElementById('setting-buff-exclude');
         if (buffExcludeInput) buffExcludeInput.value = settings.BuffExcludeKeywords || '';
+
+        const authUserInput = document.getElementById('setting-auth-user');
+        if (authUserInput) authUserInput.value = settings.AuthUsername || '';
+
+        const authPwdInput = document.getElementById('setting-auth-pwd');
+        if (authPwdInput) authPwdInput.value = settings.AuthPassword || '';
     }
 
     document.getElementById('save-env-btn').addEventListener('click', async () => {
@@ -99,10 +105,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const settings = {
                 autoConfirmListings: document.getElementById('setting-auto-confirm').checked,
                 BuffMaxItems: document.getElementById('setting-buff-max').value,
-                BuffExcludeKeywords: document.getElementById('setting-buff-exclude').value
+                BuffExcludeKeywords: document.getElementById('setting-buff-exclude').value,
+                AuthUsername: document.getElementById('setting-auth-user').value,
+                AuthPassword: document.getElementById('setting-auth-pwd').value
             };
             const res = await apiPost('/api/settings', { settings });
-            if (res.success) alert("系统配置已保存！");
+            if (res.success) alert("系统配置已保存！如果修改了账号密码，下次刷新可能需要重新登录。");
         });
     }
 
