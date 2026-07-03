@@ -84,6 +84,32 @@ router.post('/owned/delete', (req, res) => {
     res.json({ success: true });
 });
 
+router.post('/owned/manual-bind', (req, res) => {
+    console.log(`[Steam API] 收到手动收货绑定请求`);
+    const { goods_id, purchasedAt, assetid } = req.body;
+    const p = path.join(dataDir, 'in_inventory_item.json');
+    if (fs.existsSync(p)) {
+        let items = JSON.parse(fs.readFileSync(p, 'utf8'));
+        let found = false;
+        items = items.map(i => {
+            if (i.goods_id === goods_id && i.purchasedAt === purchasedAt && i.status === '待收货') {
+                i.status = '待出售';
+                i.assetid = assetid;
+                console.log(`[Steam API] [执行结果] 手动绑定成功: ${i.name} -> Asset ID: ${assetid}`);
+                found = true;
+            }
+            return i;
+        });
+        if (found) {
+            fs.writeFileSync(p, JSON.stringify(items, null, 2), 'utf8');
+            return res.json({ success: true });
+        } else {
+            return res.status(404).json({ error: "找不到匹配的待收货物品记录" });
+        }
+    }
+    res.status(404).json({ error: "资产追踪文件不存在" });
+});
+
 router.get('/history', (req, res) => {
     const p = path.join(dataDir, 'sell_history.json');
     if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')));
@@ -213,79 +239,209 @@ router.post('/sell', async (req, res) => {
     }
 });
 
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchFullContext(community, steamId, appId, contextId, count = 75, lang = 'schinese') {
+    let allAssets = [];
+    let descriptionsMap = {};
+    let lastAssetId = null;
+    let _429_attempts = 0;
+    const MAX_429_RETRIES = 3;
+
+    while (true) {
+        let uri = `https://steamcommunity.com/inventory/${steamId}/${appId}/${contextId}?l=${lang}&count=${count}&preserve_bbcode=1&raw_asset_properties=1`;
+        if (lastAssetId) {
+            uri += `&start_assetid=${lastAssetId}`;
+        }
+
+        const data = await new Promise((resolve, reject) => {
+            community.httpRequest({ uri, json: true }, (err, response, body) => {
+                if (err) return reject(err);
+                if (response.statusCode === 429) return resolve(429);
+                if (response.statusCode !== 200) return reject(new Error("HTTP " + response.statusCode));
+                resolve(body);
+            });
+        });
+
+        if (data === 429) {
+            _429_attempts++;
+            if (_429_attempts > MAX_429_RETRIES) throw new Error("Max 429 retries reached");
+            await delay(10000 * Math.pow(2, _429_attempts - 1));
+            continue;
+        }
+
+        if (!data || data.success !== 1) {
+            throw new Error("Invalid response or success != 1");
+        }
+
+        const currentAssets = data.assets || [];
+        const currentDescs = data.descriptions || [];
+
+        if (currentAssets.length === 0) break;
+        
+        allAssets = allAssets.concat(currentAssets);
+        for (const d of currentDescs) {
+            if (d.classid) {
+                const iid = d.instanceid || "0";
+                descriptionsMap[`${d.classid}_${iid}`] = d;
+            }
+        }
+
+        const moreItems = data.more_items === 1;
+        if (!moreItems) break;
+
+        lastAssetId = data.last_assetid;
+        if (!lastAssetId && currentAssets.length > 0) {
+            lastAssetId = currentAssets[currentAssets.length - 1].assetid;
+        }
+        if (!lastAssetId) break;
+
+        await delay(1000); // 1s jittered sleep
+    }
+
+    return { assets: allAssets, descriptions: Object.values(descriptionsMap) };
+}
+
+async function fetchCS2Inventory(community, steamId) {
+    const mainCtx = await fetchFullContext(community, steamId, 730, 2);
+    let secCtx;
+    try {
+        secCtx = await fetchFullContext(community, steamId, 730, 16);
+    } catch (e) {
+        console.log(`[Steam API] [执行过程] 拉取 context 16 失败或无数据: ${e.message}`);
+        secCtx = { assets: [], descriptions: [] };
+    }
+
+    const combinedAssets = [...mainCtx.assets, ...secCtx.assets];
+    const combinedDescs = [...mainCtx.descriptions, ...secCtx.descriptions];
+
+    const uniqueDescs = {};
+    for (const d of combinedDescs) {
+        if (d.classid) {
+            const iid = d.instanceid || "0";
+            uniqueDescs[`${d.classid}_${iid}`] = d;
+        }
+    }
+
+    return {
+        assets: combinedAssets,
+        descriptions: Object.values(uniqueDescs)
+    };
+}
+
 router.post('/inventory/refresh', async (req, res) => {
     console.log(`[Steam API] 收到刷新 Steam 账号库存请求`);
     try {
         const { community, session } = await getSteamCommunity();
         const steamId64 = typeof session.steamID.getSteamID64 === 'function' ? session.steamID.getSteamID64() : session.steamID.toString();
         
-        community.getUserInventoryContents(steamId64, 730, 2, false, (err, inventory) => {
-            if (err) {
-                console.error(`[Steam API] [执行结果] 获取库存失败: ${err.message}`);
-                return res.status(500).json({ error: "获取库存失败: " + err.message });
+        console.log(`[Steam API] [执行过程] 开始通过自定义防封策略拉取底层库存...`);
+        let inventoryData;
+        try {
+            inventoryData = await fetchCS2Inventory(community, steamId64);
+        } catch(err) {
+            console.error(`[Steam API] [执行结果] 获取库存失败: ${err.message}`);
+            return res.status(500).json({ error: "获取库存失败: " + err.message });
+        }
+
+        const { assets, descriptions } = inventoryData;
+        console.log(`[Steam API] [执行结果] 成功拉取底层库存，共计 ${assets.length} 件物品，开始解析...`);
+        
+        const parsedItems = assets.map(asset => {
+            const desc = descriptions.find(d => String(d.classid) === String(asset.classid) && String(d.instanceid || '0') === String(asset.instanceid || '0')) || {};
+            
+            let tradeUnlockTime = null;
+            if (desc.cache_expiration) {
+                try { tradeUnlockTime = new Date(desc.cache_expiration).toISOString(); } 
+                catch (e) { tradeUnlockTime = desc.cache_expiration; }
             }
-            console.log(`[Steam API] [执行结果] 成功拉取底层库存，共计 ${inventory.length} 件物品，开始解析...`);
-            
-            const parsedItems = inventory.map(item => {
-                let tradeUnlockTime = null;
-                if (item.cache_expiration) {
-                    try { tradeUnlockTime = new Date(item.cache_expiration).toISOString(); } 
-                    catch (e) { tradeUnlockTime = item.cache_expiration; }
-                }
-                let wear = null;
-                if (item.tags && Array.isArray(item.tags)) {
-                    const exteriorTag = item.tags.find(t => t.category === 'Exterior');
-                    if (exteriorTag) wear = exteriorTag.localized_tag_name || exteriorTag.name;
-                }
-                return {
-                    id: item.id,
-                    name: item.market_name || item.name,
-                    tradable: item.tradable,
-                    tradeUnlockTime,
-                    wear
-                };
-            });
-            
-            const invPath = path.join(dataDir, 'inventory.json');
-            fs.writeFileSync(invPath, JSON.stringify(parsedItems, null, 2), 'utf8');
-            console.log(`[Steam API] [执行过程] 最新库存数据已写入至 ${invPath}`);
-
-            // Cross-check with in_inventory_item.json
-            const inInvPath = path.join(dataDir, 'in_inventory_item.json');
-            if (fs.existsSync(inInvPath)) {
-                console.log(`[Steam API] [执行过程] 正在比对 in_inventory_item.json 中的 "待收货" 物品与最新库存...`);
-                let inInvItems = [];
-                try { inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')); } catch(e){}
-                
-                let updatedCount = 0;
-                const availableSteamItems = [...parsedItems];
-
-                inInvItems = inInvItems.map(inItem => {
-                    if (inItem.status === '待收货') {
-                        const matchIndex = availableSteamItems.findIndex(s => s.name === inItem.name);
-                        if (matchIndex !== -1) {
-                            const matchedSteam = availableSteamItems.splice(matchIndex, 1)[0];
-                            inItem.status = '待出售';
-                            inItem.assetid = matchedSteam.id;
-                            inItem.tradeUnlockTime = matchedSteam.tradeUnlockTime;
-                            updatedCount++;
-                            console.log(`[Steam API] [执行过程] 匹配成功！将饰品 [${inItem.name}] 与底层 assetid [${matchedSteam.id}] 绑定，状态更新为 "待出售"`);
+            if (!tradeUnlockTime && desc.owner_descriptions) {
+                for (let od of desc.owner_descriptions) {
+                    if (od.value && od.value.includes('交易')) {
+                        const bbcodeDateMatch = od.value.match(/\[date\](\d+)\[\/date\]/i);
+                        if (bbcodeDateMatch) {
+                            const unixTime = parseInt(bbcodeDateMatch[1], 10);
+                            tradeUnlockTime = new Date(unixTime * 1000).toISOString();
+                        } else {
+                            // 降级兼容旧版纯文本格式，防患于未然
+                            const textMatch = od.value.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*[(\uff08]\s*(\d{1,2}:\d{2}:\d{2})(?:\s*GMT)?\s*[)\uff09]/);
+                            if (textMatch) {
+                                const [_, year, month, day, time] = textMatch;
+                                const [h, m, s] = time.split(':');
+                                const paddedTime = `${h.padStart(2, '0')}:${m}:${s}`;
+                                try {
+                                    tradeUnlockTime = new Date(`${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}T${paddedTime}Z`).toISOString();
+                                } catch(e) {}
+                            }
                         }
                     }
-                    return inItem;
-                });
-
-                if (updatedCount > 0) {
-                    fs.writeFileSync(inInvPath, JSON.stringify(inInvItems, null, 2), 'utf8');
-                    console.log(`[Steam API] [执行过程] 共匹配到了 ${updatedCount} 件入库饰品，资产追踪表已保存。`);
-                } else {
-                    console.log(`[Steam API] [执行过程] 未发现任何新增匹配的待收货物品。`);
                 }
             }
-
-            console.log(`[Steam API] [执行总结] 刷新库存任务完毕，返回最新总数: ${parsedItems.length}`);
-            res.json({ success: true, count: parsedItems.length, message: "库存刷新成功" });
+            
+            let wear = null;
+            if (desc.tags && Array.isArray(desc.tags)) {
+                const exteriorTag = desc.tags.find(t => t.category === 'Exterior');
+                if (exteriorTag) wear = exteriorTag.localized_tag_name || exteriorTag.name;
+            }
+            return {
+                id: asset.assetid,
+                name: desc.market_name || desc.name || 'Unknown Item',
+                tradable: desc.tradable === 1,
+                tradeUnlockTime,
+                wear
+            };
         });
+        
+        const invPath = path.join(dataDir, 'inventory.json');
+        fs.writeFileSync(invPath, JSON.stringify(parsedItems, null, 2), 'utf8');
+        console.log(`[Steam API] [执行过程] 最新库存数据已写入至 ${invPath}`);
+
+        // Cross-check with in_inventory_item.json
+        const inInvPath = path.join(dataDir, 'in_inventory_item.json');
+        if (fs.existsSync(inInvPath)) {
+            console.log(`[Steam API] [执行过程] 正在比对 in_inventory_item.json 中的 "待收货" 物品与最新库存...`);
+            let inInvItems = [];
+            try { inInvItems = JSON.parse(fs.readFileSync(inInvPath, 'utf8')); } catch(e){}
+            
+            let updatedCount = 0;
+            const availableSteamItems = [...parsedItems];
+
+            inInvItems = inInvItems.map(inItem => {
+                if (inItem.status === '待收货') {
+                    const matchIndex = availableSteamItems.findIndex(s => s.name === inItem.name);
+                    if (matchIndex !== -1) {
+                        const matchedSteam = availableSteamItems.splice(matchIndex, 1)[0];
+                        inItem.status = '待出售';
+                        inItem.assetid = matchedSteam.id;
+                        inItem.tradeUnlockTime = matchedSteam.tradeUnlockTime;
+                        updatedCount++;
+                        console.log(`[Steam API] [执行过程] 匹配成功！将饰品 [${inItem.name}] 与底层 assetid [${matchedSteam.id}] 绑定，状态更新为 "待出售"`);
+                    }
+                } else if (inItem.assetid) {
+                    // 已绑定的物品（如 待出售），每次刷新库存时更新其最新的解锁时间和相关信息
+                    const matchIndex = availableSteamItems.findIndex(s => s.id === inItem.assetid);
+                    if (matchIndex !== -1) {
+                        const matchedSteam = availableSteamItems[matchIndex];
+                        if (inItem.tradeUnlockTime !== matchedSteam.tradeUnlockTime) {
+                            inItem.tradeUnlockTime = matchedSteam.tradeUnlockTime;
+                            updatedCount++;
+                            console.log(`[Steam API] [执行过程] 已更新绑定的饰品 [${inItem.name}] 的解锁时间为 ${matchedSteam.tradeUnlockTime || 'null'}`);
+                        }
+                    }
+                }
+                return inItem;
+            });
+
+            if (updatedCount > 0) {
+                fs.writeFileSync(inInvPath, JSON.stringify(inInvItems, null, 2), 'utf8');
+                console.log(`[Steam API] [执行过程] 共发生 ${updatedCount} 次资产追踪表变动，已保存。`);
+            } else {
+                console.log(`[Steam API] [执行过程] 未发现任何需要更新的待收货/待出售物品。`);
+            }
+        }
+
+        console.log(`[Steam API] [执行总结] 刷新库存任务完毕，返回最新总数: ${parsedItems.length}`);
+        res.json({ success: true, count: parsedItems.length, message: "库存刷新成功" });
     } catch(e) {
         res.status(500).json({ error: e.message });
     }

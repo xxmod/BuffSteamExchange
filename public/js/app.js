@@ -186,7 +186,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><span class="badge-pill">${item.status}</span></td>
                 <td>${item.tradeUnlockTime || '-'}</td>
                 <td>
-                    <button class="button-text-link mark-self-use-btn" data-id="${item.goods_id}" data-asset="${item.assetid}">标记为自用(隐藏)</button>
+                    ${item.status === '待收货' ? `<button class="button-secondary manual-receipt-btn" style="padding: 4px 10px; height: auto;" data-id="${item.goods_id}" data-time="${item.purchasedAt}">手动收货</button>` : ''}
+                    <button class="button-secondary mark-self-use-btn" style="padding: 4px 10px; height: auto;" data-id="${item.goods_id}" data-asset="${item.assetid}">标记为自用</button>
                 </td>
             </tr>
         `).join('');
@@ -197,6 +198,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const assetid = e.target.getAttribute('data-asset');
                 await apiPost('/api/steam/owned/delete', { goods_id, assetid });
                 loadOwned();
+            });
+        });
+
+        document.querySelectorAll('.manual-receipt-btn').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                const assetid = prompt("请输入您在 Steam 库存中该物品的 Asset ID（可在 Steam 网页版物品详情中查看）：");
+                if (assetid && assetid.trim()) {
+                    const goods_id = e.target.getAttribute('data-id');
+                    const purchasedAt = e.target.getAttribute('data-time');
+                    await apiPost('/api/steam/owned/manual-bind', { goods_id, purchasedAt, assetid: assetid.trim() });
+                    loadOwned();
+                }
             });
         });
     }
