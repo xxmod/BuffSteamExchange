@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuffSteam Exchange</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="brand">
+                <span class="brand-logo">✽</span>
+                <span class="brand-name">BuffSteam</span>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item active" data-page="settings">设置与配置</li>
+                <li class="nav-item" data-page="buy">购买饰品</li>
+                <li class="nav-item" data-page="inventory">Steam 库存</li>
+                <li class="nav-item" data-page="owned">持有饰品</li>
+                <li class="nav-item" data-page="account">账号管理</li>
+                <li class="nav-item" data-page="history">出售历史</li>
+                <li class="nav-item" data-page="logs">运行日志</li>
+            </ul>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="content">
+            <!-- Settings Page -->
+            <section id="page-settings" class="page active">
+                <div class="hero-band">
+                    <h1>系统设置</h1>
+                    <p class="subtitle">配置代理与核心环境变量</p>
+                </div>
+                <div class="card-grid">
+                    <div class="feature-card">
+                        <h3>环境配置 (.env)</h3>
+                        <form id="env-form" class="config-form">
+                            <!-- Dynamically loaded inputs -->
+                        </form>
+                        <button class="button-primary" id="save-env-btn">保存配置</button>
+                    </div>
+                    <div class="feature-card">
+                        <h3>数据备份与还原</h3>
+                        <p class="body-sm">导出或导入所有设置与数据备份 JSON 文件。</p>
+                        <div class="action-row">
+                            <button class="button-secondary" id="export-backup-btn">导出完整备份</button>
+                            <label for="import-backup-file" class="button-secondary">导入完整备份</label>
+                            <input type="file" id="import-backup-file" accept=".json" style="display:none;">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Buy Page -->
+            <section id="page-buy" class="page">
+                <div class="hero-band">
+                    <h1>Buff 市场购买</h1>
+                    <p class="subtitle">从 Buff 市场扫描并下单</p>
+                </div>
+                <div class="content-body">
+                    <div class="controls-band">
+                        <button class="button-primary" id="refresh-buff-btn">强制更新商品列表</button>
+                        <input type="text" class="text-input" id="search-buff-input" placeholder="筛选物品名...">
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="buy-select-all"></th>
+                                    <th class="sort-column" data-sort="name" style="cursor:pointer;">物品名称 ↕</th>
+                                    <th class="sort-column" data-sort="sell_num" style="cursor:pointer;">24h销量 ↕</th>
+                                    <th class="sort-column" data-sort="sell_min_price" style="cursor:pointer;">Buff最低价 ↕</th>
+                                    <th class="sort-column" data-sort="steam_min_price" style="cursor:pointer;">Steam最低价 ↕</th>
+                                    <th class="sort-column" data-sort="discount_rate" style="cursor:pointer;">挂刀指数 ↕</th>
+                                    <th>购买数量</th>
+                                </tr>
+                            </thead>
+                            <tbody id="buff-items-body">
+                                <!-- JS injected -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="buy-action-panel">
+                        <select id="payment-method" class="text-input">
+                            <option value="1">余额 / 默认</option>
+                            <option value="2">微信支付</option>
+                            <option value="3">支付宝支付</option>
+                        </select>
+                        <button class="button-primary" id="execute-buy-btn">下单购买选中物品</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Steam Inventory Page -->
+            <section id="page-inventory" class="page">
+                <div class="hero-band">
+                    <h1>Steam 账号库存</h1>
+                    <p class="subtitle">实时账号底层库存</p>
+                </div>
+                <div class="content-body">
+                    <button class="button-primary" id="refresh-inventory-btn" style="margin-bottom: 16px;">刷新库存</button>
+                    <div class="card-grid" id="inventory-grid">
+                        <!-- JS injected -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Owned Items Page -->
+            <section id="page-owned" class="page">
+                <div class="hero-band">
+                    <h1>系统持有饰品</h1>
+                    <p class="subtitle">通过本系统追踪购买的持有饰品</p>
+                </div>
+                <div class="content-body">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" id="owned-select-all"></th>
+                                    <th>物品名称</th>
+                                    <th>购买价</th>
+                                    <th>状态</th>
+                                    <th>解锁时间</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="owned-items-body">
+                                <!-- JS injected -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="buy-action-panel">
+                        <button class="button-primary" id="execute-sell-btn">一键低价上架 (Steam最低价-0.01)</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Account Management Page -->
+            <section id="page-account" class="page">
+                <div class="hero-band">
+                    <h1>Steam 安全与授权</h1>
+                </div>
+                <div class="card-grid">
+                    <div class="product-mockup-card-dark">
+                        <h3>二步验证码 (2FA)</h3>
+                        <div class="auth-code" id="steam-2fa-code">-----</div>
+                        <p class="body-sm">动态安全码，每 30 秒自动刷新。</p>
+                    </div>
+                    <div class="feature-card" style="grid-column: span 2;">
+                        <h3>待确认交易列表</h3>
+                        <button class="button-secondary" id="refresh-confirm-btn" style="margin-bottom: 12px;">刷新待确认交易</button>
+                        <ul class="confirmation-list" id="confirmation-list">
+                            <li>加载中...</li>
+                        </ul>
+                        <button class="button-primary" id="accept-all-btn" style="margin-top: 12px; width: 100%;">一键全部同意</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sell History Page -->
+            <section id="page-history" class="page">
+                <div class="hero-band">
+                    <h1>饰品交易历史</h1>
+                    <p class="subtitle" id="history-stats">总计支出: ¥0.00 | 预计回血: ¥0.00 | 平均折扣: 0.00</p>
+                </div>
+                <div class="content-body">
+                    <div class="table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>物品名称</th>
+                                    <th>Buff 成本</th>
+                                    <th>Steam 上架价</th>
+                                    <th>Steam 到手价</th>
+                                    <th>出售时间</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-items-body">
+                                <!-- JS injected -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Logs Page -->
+            <section id="page-logs" class="page">
+                <div class="hero-band">
+                    <h1>系统运行日志</h1>
+                </div>
+                <div class="code-window-card">
+                    <div class="window-header">
+                        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+                    </div>
+                    <pre class="console-output" id="system-logs-container">日志加载中...</pre>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="qrcode-modal" class="modal">
+        <div class="modal-content feature-card">
+            <span class="close-btn" id="close-modal">&times;</span>
+            <h3>请完成支付</h3>
+            <div id="qrcode-container" style="text-align:center; padding:20px;">
+                <!-- QR Link or Image -->
+            </div>
+            <p style="text-align:center;">支付成功后，系统会自动关闭此窗口。</p>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
