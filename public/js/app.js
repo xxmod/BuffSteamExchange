@@ -10,9 +10,25 @@ document.addEventListener('DOMContentLoaded', () => {
             item.classList.add('active');
             const pageId = item.getAttribute('data-page');
             document.getElementById(`page-${pageId}`).classList.add('active');
+
+            // Close mobile menu if open
+            const navMenu = document.getElementById('nav-menu');
+            if (navMenu && navMenu.classList.contains('show')) {
+                navMenu.classList.remove('show');
+            }
+
             loadPageData(pageId);
         });
     });
+
+    // Mobile Menu Toggle
+    const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+    const navMenu = document.getElementById('nav-menu');
+    if (mobileMenuToggle && navMenu) {
+        mobileMenuToggle.addEventListener('click', () => {
+            navMenu.classList.toggle('show');
+        });
+    }
 
     // API Helpers
     const apiGet = async (url) => (await fetch(url)).json();

@@ -118,6 +118,8 @@ p { margin-bottom: 1em; }
     flex: 1;
     padding: 64px 96px;
     overflow-y: auto;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .page { display: none; }
@@ -291,4 +293,108 @@ p { margin-bottom: 1em; }
     border-radius: var(--rounded-md);
     margin-bottom: 8px;
     background: var(--colors-canvas);
+}
+
+/* Hamburger Menu Button (hidden on desktop) */
+.hamburger-btn {
+    display: none;
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    color: var(--colors-ink);
+    cursor: pointer;
+    padding: 8px;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .content {
+        padding: 48px;
+    }
+}
+
+@media (max-width: 768px) {
+    #app {
+        flex-direction: column;
+    }
+    
+    h1 { font-size: 32px; }
+    
+    .sidebar {
+        width: 100%;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        border-right: none;
+        border-bottom: 1px solid var(--colors-hairline);
+        position: relative;
+        z-index: 100;
+    }
+    
+    .brand {
+        padding: 0;
+    }
+    
+    .hamburger-btn {
+        display: block;
+    }
+    
+    .nav-links {
+        display: none;
+        position: fixed;
+        top: 65px;
+        left: 0;
+        width: 100%;
+        height: calc(100vh - 65px);
+        background-color: var(--colors-canvas);
+        padding: 24px;
+        overflow-y: auto;
+    }
+    
+    .nav-links.show {
+        display: flex;
+    }
+    
+    .nav-item {
+        padding: 16px;
+        font-size: 16px;
+        text-align: center;
+    }
+    
+    .content {
+        padding: 24px 16px;
+        width: 100%;
+        max-width: 100vw;
+        overflow-x: hidden;
+    }
+    
+    .hero-band {
+        margin-bottom: 32px;
+    }
+    
+    .table-container {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .data-table {
+        min-width: 800px; /* Forces scroll on small screens */
+    }
+    
+    .controls-band {
+        flex-direction: column;
+    }
+    
+    .buy-action-panel {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .modal-content {
+        width: 90%;
+        margin: 20% auto;
+        padding: 24px;
+    }
 }
