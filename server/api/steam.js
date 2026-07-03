@@ -31,7 +31,14 @@ function decodeBase64(str) {
 // Helper: get authenticated community
 async function getSteamCommunity() {
     const envVars = getEnvVars();
-    const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+    // Read from .env ProxyUrl first, fallback to system proxies. If ProxyUrl is empty string, it's falsy.
+    let proxyUrl = envVars.ProxyUrl;
+    if (proxyUrl === undefined) {
+        proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+    }
+    // Explicitly set to null if empty string to disable proxy
+    if (!proxyUrl || proxyUrl.trim() === '') proxyUrl = null;
+
     const sessionOpts = {};
     if (proxyUrl) sessionOpts.httpProxy = proxyUrl;
     

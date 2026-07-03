@@ -36,7 +36,27 @@ function fetchJson(url, cookie = '') {
     return new Promise((resolve, reject) => {
         const options = { headers: { 'User-Agent': 'Mozilla/5.0 Chrome/120.0', 'Accept': 'application/json' } };
         if (cookie) options.headers['Cookie'] = cookie;
-        const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+        
+        let proxyUrl = null;
+        try {
+            const envPath = path.join(__dirname, '../../.env');
+            if (fs.existsSync(envPath)) {
+                const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+                for (let line of lines) {
+                    const match = line.match(/^ProxyUrl=(.*)$/);
+                    if (match) {
+                        proxyUrl = match[1].trim();
+                        break;
+                    }
+                }
+            }
+        } catch (e) {}
+
+        if (proxyUrl === null || proxyUrl === undefined) {
+            proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY || process.env.https_proxy || process.env.http_proxy;
+        }
+        if (!proxyUrl || proxyUrl.trim() === '') proxyUrl = null;
+
         if (proxyUrl && HttpsProxyAgent) options.agent = new HttpsProxyAgent(proxyUrl);
 
         https.get(url, options, (res) => {
