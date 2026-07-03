@@ -78,8 +78,11 @@ async function fetchSteamData(marketHashName) {
         if (data && data.error === '429') return { volume: 'Steam API 限制(429)', price: 'Steam API 限制(429)' };
         let volume = 0, price = '无数据';
         if (data && data.volume) volume = parseInt(data.volume.replace(/,/g, ''));
-        if (data && data.lowest_price) {
-            const match = data.lowest_price.match(/[\d.]+/);
+        let priceStr = null;
+        if (data && data.lowest_price) priceStr = data.lowest_price;
+        else if (data && data.median_price) priceStr = data.median_price;
+        if (priceStr) {
+            const match = priceStr.match(/[\d.]+/);
             if (match) price = parseFloat(match[0]);
         }
         return { volume, price };
@@ -107,9 +110,9 @@ async function updateBuffItemsInBackground() {
         
         let results = [];
         let pageNum = 1;
-        const maxItems = 500;
+        const maxItems = 1000;
 
-        console.log("[Buff API] [执行过程] 正在获取 Buff 市场按销量排序前 500 名商品列表...");
+        console.log("[Buff API] [执行过程] 正在获取 Buff 市场按销量排序前 1000 名商品列表...");
         while (results.length < maxItems) {
             const url = `https://buff.163.com/api/market/goods?game=csgo&page_num=${pageNum}&sort_by=sell_num.desc`;
             console.log(`[Buff API] [执行过程] 抓取 Buff 第 ${pageNum} 页商品列表...`);
