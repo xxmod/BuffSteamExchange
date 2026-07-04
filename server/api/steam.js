@@ -259,6 +259,12 @@ router.post('/sell', async (req, res) => {
                             uri: `https://steamcommunity.com/market/priceoverview/?country=CN&currency=23&appid=730&market_hash_name=${encodeURIComponent(market_hash_name)}`,
                             json: true
                         }, (err, response, body) => {
+                            if (response && response.statusCode === 429) {
+                                console.log(`[Steam API] [执行过程] 遇到 Steam 429 限制！`);
+                                const { notify } = require('../utils/notify');
+                                notify(`[警报] 触发 429 访问频率限制 (在自动获取 Steam 底价上架时)，当前请求失败！`);
+                                return resolve(null);
+                            }
                             if (err) {
                                 console.log(`[Steam API] [执行过程] HTTP Error: ${err.message}`);
                                 return resolve(null);
@@ -338,6 +344,10 @@ router.post('/sell', async (req, res) => {
 
             if (sellRes.success) {
                 console.log(`[Steam API] [执行结果] [${i+1}/${items.length}] 上架成功！`);
+                try {
+                    const { notify } = require('../utils/notify');
+                    notify(`[上架] 饰品 [${market_hash_name}] 成功在 Steam 挂单！(上架价: ¥${(priceWithFee/100).toFixed(2)}, 预计到手: ¥${(priceWithoutFee/100).toFixed(2)})`);
+                } catch(e) {}
                 successCount++;
                 // Update in_inventory_item.json status to 待确认
                 const inInvPath = path.join(dataDir, 'in_inventory_item.json');
@@ -597,6 +607,18 @@ router.post('/inventory/refresh', async (req, res) => {
                 history.push(...soldItems);
                 fs.writeFileSync(historyPath, JSON.stringify([{ _updatedt: new Date().toISOString() }, ...history], null, 2), 'utf8');
                 console.log(`[Steam API] [执行过程] 新增 ${soldItems.length} 条出售历史记录。`);
+
+                try {
+                    const { notify } = require('../utils/notify');
+                    for (const item of soldItems) {
+                        const buffCost = parseFloat(item.buff_price || 0);
+                        const steamNet = parseFloat(item.sell_price_no_fee || 0) / 100;
+                        const discount = steamNet > 0 && buffCost > 0 ? (buffCost / steamNet).toFixed(4) : "0.0000";
+                        notify(`[售出] 饰品 [${item.name}] 成功售出！\nBuff成本: ¥${buffCost.toFixed(2)}\nSteam到手: ¥${steamNet.toFixed(2)}\n折扣比例: ${discount}`);
+                    }
+                } catch (e) {
+                    console.error("[Steam API] [通知发送失败]", e);
+                }
             }
 
             // Always write the in_inventory_item.json to update its _updatedt

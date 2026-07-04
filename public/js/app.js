@@ -81,6 +81,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const buffExcludeInput = document.getElementById('setting-buff-exclude');
         if (buffExcludeInput) buffExcludeInput.value = settings.BuffExcludeKeywords || '';
 
+        const webhookUrlInput = document.getElementById('setting-webhook-url');
+        if (webhookUrlInput) webhookUrlInput.value = settings.WebhookUrl || '';
+
         const authUserInput = document.getElementById('setting-auth-user');
         if (authUserInput) authUserInput.value = settings.AuthUsername || '';
 
@@ -112,13 +115,39 @@ document.addEventListener('DOMContentLoaded', () => {
                 autoSellTradable: document.getElementById('setting-auto-sell').checked,
                 BuffMaxItems: document.getElementById('setting-buff-max').value,
                 BuffExcludeKeywords: document.getElementById('setting-buff-exclude').value,
+                WebhookUrl: document.getElementById('setting-webhook-url').value,
                 AuthUsername: document.getElementById('setting-auth-user').value,
                 AuthPassword: document.getElementById('setting-auth-pwd').value
             };
-            const res = await apiPost('/api/settings', { settings });
-            if (res.success) alert("系统配置已保存！如果修改了账号密码，下次刷新可能需要重新登录。");
-        });
-    }
+        const res = await apiPost('/api/settings', { settings });
+        if (res.success) alert("系统配置已保存！如果修改了账号密码，下次刷新可能需要重新登录。");
+    });
+}
+
+const testWebhookBtn = document.getElementById('test-webhook-btn');
+if (testWebhookBtn) {
+    testWebhookBtn.addEventListener('click', async () => {
+        const urlInput = document.getElementById('setting-webhook-url');
+        if (!urlInput || !urlInput.value.trim()) {
+            return alert("请先填写 Webhook 地址！");
+        }
+        testWebhookBtn.innerText = '测试中...';
+        testWebhookBtn.disabled = true;
+        try {
+            const res = await apiPost('/api/settings/test-webhook', { url: urlInput.value.trim() });
+            if (res.success) {
+                alert(`请求成功！状态码: ${res.statusCode}\n返回: ${res.body}`);
+            } else {
+                alert(`请求失败: ${res.error}`);
+            }
+        } catch (e) {
+            alert(`测试发生异常: ${e.message}`);
+        } finally {
+            testWebhookBtn.innerText = '测试链接';
+            testWebhookBtn.disabled = false;
+        }
+    });
+}
 
     document.getElementById('export-backup-btn').addEventListener('click', () => {
         window.location.href = '/api/settings/export';

@@ -72,6 +72,10 @@ async function checkAutoSellTradableItems() {
             if (item.status === '待出售' && item.tradeUnlockTime) {
                 const unlockTime = new Date(item.tradeUnlockTime);
                 if (unlockTime <= now) {
+                    try {
+                        const { notify } = require('./utils/notify');
+                        notify(`[解锁] 饰品 [${item.market_hash_name || item.name}] (成本: ¥${item.buff_price}) 已过交易锁定期，准备执行自动上架策略。`);
+                    } catch(e) {}
                     itemsToSell.push({
                         assetid: item.assetid,
                         auto_price: true,

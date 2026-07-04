@@ -168,6 +168,8 @@ async function updateBuffItemsInBackground() {
 
                 if (steamData.volume === 'Steam API 限制(429)' || (typeof steamData.volume === 'string' && steamData.volume.includes('429'))) {
                     console.log(`[Buff API] [执行过程] 遇到 Steam 429 限制，触发风控保护，等待 5 分钟后再继续...`);
+                    const { notify } = require('../utils/notify');
+                    notify(`[警报] 触发 429 访问频率限制 (在抓取 Buff 列表查 Steam 价格时)，自动保护机制启动，暂停抓取 5 分钟！`);
                     await delay(300000); // 5 分钟
                 } else if (results.length % 30 === 0) {
                     console.log(`[Buff API] [执行过程] 已连续查询 30 次，触发常规防封，等待 2 分钟后再继续...`);
@@ -320,6 +322,12 @@ async function executeBuy(itemId, number, payment, itemInfo) {
             bought++;
             console.log(`[Buff API] [执行结果] [${bought}/${number}] 下单成功! 订单号: ${orderId}`);
             
+            try {
+                const { notify } = require('../utils/notify');
+                const actionStr = payment === 1 ? '成功支付并购买饰品' : '成功下单饰品(请在手机APP或扫码支付)';
+                notify(`[买入] ${actionStr}: ${itemInfo.name} (单价: ¥${item.price})`);
+            } catch(e) {}
+
             let payUrl = null;
             if (payment === 2) {
                 console.log(`[Buff API] [执行过程] 正在为订单 ${orderId} 获取微信支付链接...`);

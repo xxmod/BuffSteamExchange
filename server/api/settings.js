@@ -106,4 +106,51 @@ router.post('/restart', (req, res) => {
     }, 1000);
 });
 
+router.post('/test-webhook', (req, res) => {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: '缺少 webhook url' });
+
+    const targetUrl = url.trim();
+    const postData = JSON.stringify({ message: '[测试]此文本为测试消息' });
+
+    try {
+        const parsedUrl = new URL(targetUrl);
+        const requestModule = parsedUrl.protocol === 'https:' ? require('https') : require('http');
+
+        const options = {
+            hostname: parsedUrl.hostname,
+            port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 5000
+        };
+
+        const reqHook = requestModule.request(options, (resHook) => {
+            let data = '';
+            resHook.on('data', chunk => data += chunk);
+            resHook.on('end', () => {
+                res.json({ success: true, statusCode: resHook.statusCode, body: data });
+            });
+        });
+
+        reqHook.on('error', (e) => {
+            res.status(500).json({ error: '请求失败: ' + e.message });
+        });
+        
+        reqHook.on('timeout', () => {
+            reqHook.destroy();
+            res.status(500).json({ error: '请求超时' });
+        });
+
+        reqHook.write(postData);
+        reqHook.end();
+    } catch (e) {
+        res.status(400).json({ error: 'URL 解析失败: ' + e.message });
+    }
+});
+
 module.exports = router;
