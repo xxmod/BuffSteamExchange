@@ -73,23 +73,9 @@ function fetchJson(url, cookie = '') {
 
 async function fetchSteamData(marketHashName) {
     try {
-        const { getSteamCommunity } = require('./steam.js');
-        const { community } = await getSteamCommunity();
-        if (!community) {
-            return { volume: '未登录 Steam', price: '未登录 Steam' };
-        }
         const url = `https://steamcommunity.com/market/priceoverview/?country=CN&currency=23&appid=730&market_hash_name=${encodeURIComponent(marketHashName)}`;
         
-        const data = await new Promise((resolve) => {
-            community.httpRequest({ uri: url, json: true }, (err, response, body) => {
-                if (err) {
-                    if (err.message && err.message.includes('429')) return resolve({ error: '429' });
-                    return resolve({ error: err.message });
-                }
-                if (response && response.statusCode === 429) return resolve({ error: '429' });
-                resolve(body);
-            });
-        });
+        const data = await fetchJson(url);
 
         if (data && data.error === '429') return { volume: 'Steam API 限制(429)', price: 'Steam API 限制(429)' };
         if (data && data.error) return { volume: `错误: ${data.error}`, price: `错误: ${data.error}` };

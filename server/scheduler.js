@@ -45,6 +45,83 @@ function checkAndRunScheduler() {
     // We will implement this later when steam.js is ready
 }
 
+const http = require('http');
+
+async function checkAutoSellTradableItems() {
+    try {
+        const settingsPath = path.join(dataDir, 'settings.json');
+        let settings = {};
+        if (fs.existsSync(settingsPath)) {
+            settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+        }
+
+        if (!settings.autoSellTradable) {
+            return;
+        }
+
+        const inInvPath = path.join(dataDir, 'in_inventory_item.json');
+        if (!fs.existsSync(inInvPath)) return;
+        
+        let items = [];
+        try { items = JSON.parse(fs.readFileSync(inInvPath, 'utf8')).filter(i => !i._updatedt); } catch(e) {}
+        
+        const now = new Date();
+        const itemsToSell = [];
+
+        for (const item of items) {
+            if (item.status === '待出售' && item.tradeUnlockTime) {
+                const unlockTime = new Date(item.tradeUnlockTime);
+                if (unlockTime <= now) {
+                    itemsToSell.push({
+                        assetid: item.assetid,
+                        auto_price: true,
+                        market_hash_name: item.market_hash_name || item.name
+                    });
+                }
+            }
+        }
+
+        if (itemsToSell.length > 0) {
+            console.log(`[Scheduler] 发现 ${itemsToSell.length} 件已解锁饰品，正在触发自动上架...`);
+            
+            const username = settings.AuthUsername || 'admin';
+            const password = settings.AuthPassword || '123456';
+            const auth = Buffer.from(`${username}:${password}`).toString('base64');
+            
+            const postData = JSON.stringify({ items: itemsToSell });
+
+            const options = {
+                hostname: '127.0.0.1',
+                port: 9998,
+                path: '/api/steam/sell',
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': `Basic ${auth}`
+                }
+            };
+
+            const req = http.request(options, (res) => {
+                let data = '';
+                res.on('data', (chunk) => data += chunk);
+                res.on('end', () => {
+                    console.log(`[Scheduler] 自动上架请求完成，API 响应: ${data}`);
+                });
+            });
+
+            req.on('error', (e) => {
+                console.error(`[Scheduler] 自动上架请求异常: ${e.message}`);
+            });
+
+            req.write(postData);
+            req.end();
+        }
+    } catch (e) {
+        console.error(`[Scheduler] 自动出售任务异常:`, e.message);
+    }
+}
+
 function checkFiveMinuteTasks() {
     if (steamRouter.checkPendingConfirmations) {
         steamRouter.checkPendingConfirmations().catch(e => console.error(`[Scheduler] 5-minute task failed: ${e.message}`));
@@ -52,7 +129,15 @@ function checkFiveMinuteTasks() {
 }
 
 // 1 Hour interval
-setInterval(checkAndRunScheduler, 1000 * 60 * 60);
+setInterval(() => {
+    checkAndRunScheduler();
+    checkAutoSellTradableItems().catch(e => console.error(e));
+}, 1000 * 60 * 60);
+
+// 24 Hour interval (explicit daily check, although the hourly check also triggers it)
+setInterval(() => {
+    checkAutoSellTradableItems().catch(e => console.error(e));
+}, 1000 * 60 * 60 * 24);
 
 // 5 Minute interval
 setInterval(checkFiveMinuteTasks, 1000 * 60 * 5);
@@ -60,3 +145,4 @@ setInterval(checkFiveMinuteTasks, 1000 * 60 * 5);
 // Initial run
 // checkAndRunScheduler();
 setTimeout(checkFiveMinuteTasks, 5000); // Check shortly after startup
+setTimeout(() => checkAutoSellTradableItems().catch(e => console.error(e)), 10000); // Initial check 10 seconds after startup

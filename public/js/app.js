@@ -70,6 +70,11 @@ document.addEventListener('DOMContentLoaded', () => {
             autoConfirmCb.checked = !!settings.autoConfirmListings;
         }
 
+        const autoSellCb = document.getElementById('setting-auto-sell');
+        if (autoSellCb) {
+            autoSellCb.checked = !!settings.autoSellTradable;
+        }
+
         const buffMaxInput = document.getElementById('setting-buff-max');
         if (buffMaxInput) buffMaxInput.value = settings.BuffMaxItems || '';
 
@@ -104,6 +109,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveSettingsBtn.addEventListener('click', async () => {
             const settings = {
                 autoConfirmListings: document.getElementById('setting-auto-confirm').checked,
+                autoSellTradable: document.getElementById('setting-auto-sell').checked,
                 BuffMaxItems: document.getElementById('setting-buff-max').value,
                 BuffExcludeKeywords: document.getElementById('setting-buff-exclude').value,
                 AuthUsername: document.getElementById('setting-auth-user').value,
