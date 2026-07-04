@@ -75,7 +75,9 @@ async function checkAutoSellTradableItems() {
                     itemsToSell.push({
                         assetid: item.assetid,
                         auto_price: true,
-                        market_hash_name: item.market_hash_name || item.name
+                        market_hash_name: item.market_hash_name || item.name,
+                        auto_sell_mode: true,
+                        buff_price: item.buff_price || 0
                     });
                 }
             }

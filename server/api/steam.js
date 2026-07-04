@@ -246,7 +246,7 @@ router.post('/sell', async (req, res) => {
         let successCount = 0;
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
-            let { assetid, priceWithoutFee, auto_price } = item;
+            let { assetid, priceWithoutFee, auto_price, auto_sell_mode, buff_price } = item;
             
             const invItem = inventory.find(inv => inv.id === String(assetid));
             const market_hash_name = invItem ? invItem.market_hash_name : item.market_hash_name;
@@ -280,6 +280,14 @@ router.post('/sell', async (req, res) => {
                                 if (targetPriceWithFee < 3) targetPriceWithFee = 3;
                                 priceWithoutFee = calcPriceWithoutFee(targetPriceWithFee);
                                 console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 获取成功: Steam 底价 ¥${lowestNum}，挂单价 ¥${(targetPriceWithFee/100).toFixed(2)}，到手价 ¥${(priceWithoutFee/100).toFixed(2)}`);
+                                
+                                if (auto_sell_mode && buff_price !== undefined) {
+                                    const expectedReturn = lowestNum * 0.85;
+                                    const ratio = buff_price / expectedReturn;
+                                    if (ratio >= 0.9) {
+                                        throw new Error(`自动止损保护触发 (成本: ¥${buff_price}, 0.85*底价: ¥${expectedReturn.toFixed(2)}, 比例: ${ratio.toFixed(4)} >= 0.9)`);
+                                    }
+                                }
                             } else {
                                 throw new Error("价格解析失败");
                             }
@@ -290,8 +298,8 @@ router.post('/sell', async (req, res) => {
                         throw new Error("价格请求返回为空");
                     }
                 } catch (e) {
-                    console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 实时获取价格失败，终止上架: ${e.message}`);
-                    results.push({ assetid, success: false, error: "无法获取最新售价: " + e.message });
+                    console.log(`[Steam API] [执行过程] [${i+1}/${items.length}] 上架前置检查失败或被拦截: ${e.message}`);
+                    results.push({ assetid, success: false, error: e.message });
                     continue;
                 }
             }

@@ -445,21 +445,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let totalSpend = 0, totalIncome = 0;
         tbody.innerHTML = history.map(item => {
-            totalSpend += parseFloat(item.buff_price || 0);
-            totalIncome += parseFloat(item.sell_price_no_fee || 0) / 100;
+            const buffCost = parseFloat(item.buff_price || 0);
+            const netIncome = parseFloat(item.sell_price_no_fee || 0) / 100;
+            if (buffCost > 0) {
+                totalSpend += buffCost;
+                totalIncome += netIncome;
+            }
             return `
                 <tr>
                     <td>${item.name}</td>
-                    <td>¥${parseFloat(item.buff_price).toFixed(2)}</td>
+                    <td>¥${buffCost.toFixed(2)}</td>
                     <td>¥${(item.sell_price_with_fee / 100).toFixed(2)}</td>
-                    <td>¥${(item.sell_price_no_fee / 100).toFixed(2)}</td>
+                    <td>¥${netIncome.toFixed(2)}</td>
                     <td>${item.soldAt || '未知'}</td>
                 </tr>
             `;
         }).join('');
 
         const discount = totalIncome > 0 ? (totalSpend / totalIncome).toFixed(4) : "0.00";
-        document.getElementById('history-stats').innerText = `总计支出: ¥${totalSpend.toFixed(2)} | 预计回血: ¥${totalIncome.toFixed(2)} | 平均折扣: ${discount}`;
+        document.getElementById('history-stats').innerText = `总计支出: ¥${totalSpend.toFixed(2)} | 预计回血: ¥${totalIncome.toFixed(2)} | 平均折扣: ${discount} (注: 已剔除 0 成本饰品)`;
     }
 
     // --- Logs ---
