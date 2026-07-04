@@ -125,24 +125,35 @@ async function checkAutoSellTradableItems() {
         }
     } catch (e) {
         console.error(`[Scheduler] 自动出售任务异常:`, e.message);
+        try { require('./utils/notify').notify(`[失败] 计划任务 (自动出售) 异常: ${e.message}`); } catch(err){}
     }
 }
 
 function checkFiveMinuteTasks() {
     if (steamRouter.checkPendingConfirmations) {
-        steamRouter.checkPendingConfirmations().catch(e => console.error(`[Scheduler] 5-minute task failed: ${e.message}`));
+        steamRouter.checkPendingConfirmations().catch(e => {
+            console.error(`[Scheduler] 5-minute task failed: ${e.message}`);
+            try { require('./utils/notify').notify(`[失败] 计划任务 (自动确认) 异常: ${e.message}`); } catch(err){}
+        });
     }
+}
+
+function runAutoSellWrapper() {
+    checkAutoSellTradableItems().catch(e => {
+        console.error(`[Scheduler] Auto sell task failed:`, e);
+        try { require('./utils/notify').notify(`[失败] 计划任务 (自动出售) 异常: ${e.message}`); } catch(err){}
+    });
 }
 
 // 1 Hour interval
 setInterval(() => {
     checkAndRunScheduler();
-    checkAutoSellTradableItems().catch(e => console.error(e));
+    runAutoSellWrapper();
 }, 1000 * 60 * 60);
 
 // 24 Hour interval (explicit daily check, although the hourly check also triggers it)
 setInterval(() => {
-    checkAutoSellTradableItems().catch(e => console.error(e));
+    runAutoSellWrapper();
 }, 1000 * 60 * 60 * 24);
 
 // 5 Minute interval
@@ -151,4 +162,4 @@ setInterval(checkFiveMinuteTasks, 1000 * 60 * 5);
 // Initial run
 // checkAndRunScheduler();
 setTimeout(checkFiveMinuteTasks, 5000); // Check shortly after startup
-setTimeout(() => checkAutoSellTradableItems().catch(e => console.error(e)), 10000); // Initial check 10 seconds after startup
+setTimeout(() => runAutoSellWrapper(), 10000); // Initial check 10 seconds after startup

@@ -167,10 +167,10 @@ async function updateBuffItemsInBackground() {
                 });
 
                 if (steamData.volume === 'Steam API 限制(429)' || (typeof steamData.volume === 'string' && steamData.volume.includes('429'))) {
-                    console.log(`[Buff API] [执行过程] 遇到 Steam 429 限制，触发风控保护，等待 5 分钟后再继续...`);
+                    console.log(`[Buff API] [执行过程] 遇到 Steam 429 限制，触发风控保护，等待 5 小时后再继续...`);
                     const { notify } = require('../utils/notify');
-                    notify(`[警报] 触发 429 访问频率限制 (在抓取 Buff 列表查 Steam 价格时)，自动保护机制启动，暂停抓取 5 分钟！`);
-                    await delay(300000); // 5 分钟
+                    notify(`[警报] 触发 429 访问频率限制 (在抓取 Buff 列表查 Steam 价格时)，自动保护机制启动，暂停抓取 5 小时！`);
+                    await delay(18000000); // 5 小时
                 } else if (results.length % 30 === 0) {
                     console.log(`[Buff API] [执行过程] 已连续查询 30 次，触发常规防封，等待 2 分钟后再继续...`);
                     await delay(120000); // 2 分钟
@@ -282,6 +282,10 @@ async function executeBuy(itemId, number, payment, itemInfo) {
     const sellRes = await requestBuff(sellOrderUrl, 'GET', null, headers);
     if (sellRes.code !== 'OK') {
         console.error(`[Buff API] [执行结果] 获取卖家列表失败: ${sellRes.error || sellRes.msg}`);
+        try {
+            const { notify } = require('../utils/notify');
+            notify(`[失败] 尝试购买 [${goods.name}] 时获取卖家列表失败: ${sellRes.error || sellRes.msg}`);
+        } catch(e) {}
         throw new Error(`获取卖家列表失败: ${sellRes.error || sellRes.msg}`);
     }
     
@@ -373,6 +377,10 @@ async function executeBuy(itemId, number, payment, itemInfo) {
 
         } else {
             console.error(`[Buff API] [执行结果] 下单失败: ${buyRes.error || buyRes.msg}`);
+            try {
+                const { notify } = require('../utils/notify');
+                notify(`[失败] 购买饰品 [${itemInfo.name}] 失败: ${buyRes.error || buyRes.msg}`);
+            } catch(e) {}
             results.push({ status: 'failed', error: buyRes.error || buyRes.msg });
             if (buyRes.code === 'COOLING_DOWN') {
                 console.error(`[Buff API] [执行结果] 触发冷却限制，停止尝试购买当前饰品。`);

@@ -367,6 +367,10 @@ router.post('/sell', async (req, res) => {
                 }
             } else {
                 console.error(`[Steam API] [执行结果] [${i+1}/${items.length}] 上架失败: ${sellRes.error}`);
+                try {
+                    const { notify } = require('../utils/notify');
+                    notify(`[失败] 饰品 [${market_hash_name}] Steam 上架失败: ${sellRes.error}`);
+                } catch(e) {}
             }
         }
         
@@ -662,8 +666,15 @@ async function checkPendingConfirmations() {
             console.log(`[Scheduler] 检测到 ${pendingItems.length} 个待确认饰品且自动确认已开启，正在尝试一键同意...`);
             await new Promise(resolve => {
                 community.acceptAllConfirmations(time, confKey, allowKey, (err, confs) => {
-                    if (err) console.error(`[Scheduler] 自动确认失败: ${err.message}`);
-                    else console.log(`[Scheduler] 自动确认成功，已处理确认请求。`);
+                    if (err) {
+                        console.error(`[Scheduler] 自动确认失败: ${err.message}`);
+                        try {
+                            const { notify } = require('../utils/notify');
+                            notify(`[失败] Steam 自动确认挂单失败: ${err.message}`);
+                        } catch(e) {}
+                    } else {
+                        console.log(`[Scheduler] 自动确认成功，已处理确认请求。`);
+                    }
                     resolve();
                 });
             });
