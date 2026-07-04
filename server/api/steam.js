@@ -714,6 +714,34 @@ async function checkPendingConfirmations() {
     }
 }
 
+async function getPriceHistory(market_hash_name) {
+    return new Promise((resolve) => {
+        if (!community || !community.loggedIn) {
+            console.error('[Steam API] [getPriceHistory] Steam not logged in.');
+            return resolve(null);
+        }
+        community.httpRequest({
+            method: 'GET',
+            uri: `https://steamcommunity.com/market/pricehistory/?appid=730&market_hash_name=${encodeURIComponent(market_hash_name)}`,
+            json: true
+        }, (err, response, body) => {
+            if (err) {
+                console.error(`[Steam API] [getPriceHistory] HTTP Error: ${err.message}`);
+                return resolve(null);
+            }
+            if (response && response.statusCode === 429) {
+                console.error(`[Steam API] [getPriceHistory] Rate limited (429)!`);
+                return resolve(null);
+            }
+            if (body && body.success && body.prices) {
+                return resolve(body.prices);
+            }
+            resolve(null);
+        });
+    });
+}
+
 router.checkPendingConfirmations = checkPendingConfirmations;
 router.getSteamCommunity = getSteamCommunity;
+router.getPriceHistory = getPriceHistory;
 module.exports = router;
