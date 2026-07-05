@@ -8,11 +8,17 @@ const dataDir = path.join(__dirname, '../data');
 
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
-function calculateSlope(prices) {
-    if (!prices || prices.length < 2) return 0;
+function analyzePriceHistory(prices) {
+    if (!prices || prices.length < 30) return null;
+    
+    // Sort chronologically just in case (Steam format: "MMM DD YYYY HH: +0")
     prices.sort((a, b) => new Date(a[0].substring(0, 11)) - new Date(b[0].substring(0, 11)));
+    
+    // We need at least the last 30 data points
     const recentPrices = prices.slice(-30);
     const n = recentPrices.length;
+
+    // 1. Calculate Slope (Linear Regression on the last 30 days)
     let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
     for (let i = 0; i < n; i++) {
         const x = i;
@@ -23,8 +29,41 @@ function calculateSlope(prices) {
         sumX2 += x * x;
     }
     const denominator = (n * sumX2 - sumX * sumX);
-    if (denominator === 0) return 0;
-    return (n * sumXY - sumX * sumY) / denominator;
+    const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+
+    // 2. Calculate SMA(7) and SMA(30)
+    let sum30 = 0;
+    let sum7 = 0;
+    for (let i = 0; i < n; i++) {
+        sum30 += recentPrices[i][1];
+        if (i >= n - 7) sum7 += recentPrices[i][1];
+    }
+    const sma30 = sum30 / 30;
+    const sma7 = sum7 / 7;
+
+    // 3. Calculate RSI(14)
+    const rsiPrices = prices.slice(-15); // We need 15 days to get 14 differences
+    let gains = 0, losses = 0;
+    for (let i = 1; i < rsiPrices.length; i++) {
+        const diff = rsiPrices[i][1] - rsiPrices[i - 1][1];
+        if (diff >= 0) gains += diff;
+        else losses -= diff; // Absolute value
+    }
+    let rsi14 = 50; // Default if flat
+    if (gains === 0 && losses === 0) {
+        rsi14 = 50;
+    } else if (losses === 0) {
+        rsi14 = 100;
+    } else if (gains === 0) {
+        rsi14 = 0;
+    } else {
+        const avgGain = gains / 14;
+        const avgLoss = losses / 14;
+        const rs = avgGain / avgLoss;
+        rsi14 = 100 - (100 / (1 + rs));
+    }
+
+    return { slope, sma7, sma30, rsi14 };
 }
 
 function checkAndRunScheduler() {
@@ -100,46 +139,89 @@ async function checkAutoSellTradableItems() {
                     const itemName = item.market_hash_name || item.name;
                     item.hold_cycle = item.hold_cycle || 0;
                     
-                    let slope = trendCache[itemName];
+                    let analysis = trendCache[itemName];
                     let fetchedNow = false;
 
-                    if (slope === undefined) {
+                    if (analysis === undefined) {
                         console.log(`[Scheduler] Fetching price history for ${itemName} to calculate trend...`);
                         const history = await steamRouter.getPriceHistory(itemName);
                         if (history) {
-                            slope = calculateSlope(history);
-                            trendCache[itemName] = slope;
+                            analysis = analyzePriceHistory(history);
+                            trendCache[itemName] = analysis;
                             fetchedNow = true;
                         }
                     }
 
-                    if (slope !== undefined && slope > 0) {
-                        if (item.hold_cycle < 3) {
-                            item.hold_cycle += 1;
-                            modifiedInInv = true;
-                            console.log(`[Scheduler] ${itemName} shows UPWARD trend (slope ${slope.toFixed(4)}), holding for another cycle (${item.hold_cycle}/3).`);
+                    if (analysis) {
+                        const { slope, sma7, sma30, rsi14 } = analysis;
+                        let decision = "SELL";
+                        
+                        if (slope > 0 && rsi14 >= 75) {
+                            decision = "SELL";
+                            console.log(`[Scheduler] ${itemName} OVERBOUGHT (slope ${slope.toFixed(4)}, rsi ${rsi14.toFixed(1)}). Proceeding to sell.`);
                             try {
                                 const { notify } = require('./utils/notify');
-                                notify(`[预测持有] 饰品 [${itemName}] 预测价格上涨，当前第 ${item.hold_cycle} 个等待周期，暂不出售。`);
+                                notify(`[强制出售] 饰品 [${itemName}] 严重超买(RSI=${rsi14.toFixed(1)})，防高位接盘，无视趋势立即抛售。`);
                             } catch(e) {}
-                            
-                            if (fetchedNow) await delay(60000); // 1 minute delay to prevent 429
-                            continue; // Skip selling this item
-                        } else {
-                            console.log(`[Scheduler] ${itemName} shows UPWARD trend but reached max hold cycles (3). Proceeding to sell.`);
+                        } else if (slope <= 0 && sma7 < sma30) {
+                            decision = "SELL";
+                            console.log(`[Scheduler] ${itemName} DEAD CROSS (slope ${slope.toFixed(4)}, sma7 ${sma7.toFixed(2)} < sma30 ${sma30.toFixed(2)}). Proceeding to sell.`);
                             try {
                                 const { notify } = require('./utils/notify');
-                                notify(`[强制出售] 饰品 [${itemName}] 虽预测价格上涨，但已达最大等待周期(3次)，立即上架。`);
+                                notify(`[策略出售] 饰品 [${itemName}] 趋势向下且短期跌破长期均线(死叉)，立刻止损抛售。`);
+                            } catch(e) {}
+                        } else if (slope > 0 && sma7 >= sma30 && rsi14 < 70) {
+                            if (item.hold_cycle < 7) {
+                                decision = "HOLD";
+                                item.hold_cycle += 1;
+                                modifiedInInv = true;
+                                console.log(`[Scheduler] ${itemName} STRONG HOLD (slope ${slope.toFixed(4)}, sma7 >= sma30, rsi ${rsi14.toFixed(1)}). Cycle ${item.hold_cycle}/7.`);
+                                try {
+                                    const { notify } = require('./utils/notify');
+                                    notify(`[预测持有] 饰品 [${itemName}] 趋势健康(多头排列)，当前第 ${item.hold_cycle} 个周期，暂不出售。`);
+                                } catch(e) {}
+                                
+                                if (fetchedNow) await delay(60000); // 1 minute delay to prevent 429
+                                continue;
+                            } else {
+                                decision = "SELL";
+                                console.log(`[Scheduler] ${itemName} STRONG HOLD but reached max cycles.`);
+                                try {
+                                    const { notify } = require('./utils/notify');
+                                    notify(`[强制出售] 饰品 [${itemName}] 虽预测价格上涨，但已达最大等待周期(7次/天)，立即上架。`);
+                                } catch(e) {}
+                            }
+                        } else if (slope <= 0 && rsi14 <= 25) {
+                            if (item.hold_cycle < 7) {
+                                decision = "HOLD";
+                                item.hold_cycle += 1;
+                                modifiedInInv = true;
+                                console.log(`[Scheduler] ${itemName} OVERSOLD (slope ${slope.toFixed(4)}, rsi ${rsi14.toFixed(1)}). Cycle ${item.hold_cycle}/7.`);
+                                try {
+                                    const { notify } = require('./utils/notify');
+                                    notify(`[博反弹持有] 饰品 [${itemName}] 出现极端超卖(RSI=${rsi14.toFixed(1)})，可能有超跌反弹，当前第 ${item.hold_cycle} 个周期，暂不出售。`);
+                                } catch(e) {}
+                                
+                                if (fetchedNow) await delay(60000);
+                                continue;
+                            } else {
+                                decision = "SELL";
+                                console.log(`[Scheduler] ${itemName} OVERSOLD but reached max cycles.`);
+                                try {
+                                    const { notify } = require('./utils/notify');
+                                    notify(`[强制出售] 饰品 [${itemName}] 虽极度超卖，但已达最大等待周期(7次/天)，立即上架。`);
+                                } catch(e) {}
+                            }
+                        } else {
+                            decision = "SELL";
+                            console.log(`[Scheduler] ${itemName} UNCLEAR TREND (slope ${slope.toFixed(4)}, rsi ${rsi14.toFixed(1)}). Proceeding to sell.`);
+                            try {
+                                const { notify } = require('./utils/notify');
+                                notify(`[策略出售] 饰品 [${itemName}] 走势震荡或动能不明朗，不再等待，立即上架变现。`);
                             } catch(e) {}
                         }
-                    } else if (slope !== undefined && slope <= 0) {
-                        console.log(`[Scheduler] ${itemName} shows DOWNWARD or FLAT trend (slope ${slope.toFixed(4)}). Proceeding to sell.`);
-                        try {
-                            const { notify } = require('./utils/notify');
-                            notify(`[策略出售] 饰品 [${itemName}] 预测价格下跌或走势不佳，不再等待，立即上架。`);
-                        } catch(e) {}
                     } else {
-                        // slope is undefined (failed to fetch history), proceed to sell normally without strategy
+                        // analysis is undefined (failed to fetch history), proceed to sell normally without strategy
                         try {
                             const { notify } = require('./utils/notify');
                             notify(`[解锁] 饰品 [${itemName}] (成本: ¥${item.buff_price}) 已过交易锁定期，准备执行自动上架策略。`);
@@ -224,7 +306,6 @@ function runAutoSellWrapper() {
 // 1 Hour interval
 setInterval(() => {
     checkAndRunScheduler();
-    runAutoSellWrapper();
 }, 1000 * 60 * 60);
 
 // 24 Hour interval (explicit daily check, although the hourly check also triggers it)
