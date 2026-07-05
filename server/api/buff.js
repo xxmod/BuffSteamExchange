@@ -3,6 +3,7 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const { analyzePriceHistory } = require('../utils/trend');
 
 const dataDir = path.join(__dirname, '../../data');
 const buffPath = path.join(dataDir, 'buff_item.json');
@@ -135,6 +136,12 @@ async function updateBuffItemsInBackground() {
             const data = await fetchJson(url, cookie);
             if (data.code !== 'OK') {
                 console.error(`[Buff API] [执行过程] Buff 数据请求异常，提前终止。API响应: ${JSON.stringify(data)}`);
+                if (data.code === 'Login Required') {
+                    try {
+                        const { notify } = require('../utils/notify');
+                        notify(`[警告] Buff Cookie已过期或未登录！系统已暂停抓取。请手动登录 Buff 并更新 .env 中的 BuffCookie，然后重新启动服务。`);
+                    } catch(e) {}
+                }
                 break;
             }
             const items = data.data.items || [];
@@ -157,13 +164,44 @@ async function updateBuffItemsInBackground() {
                 const steamData = await fetchSteamData(hashName);
                 console.log(`[Buff API] [执行结果] [${item.name}] 获取完毕 -> Steam底价: ${steamData.price}, 销量: ${steamData.volume}`);
                 
+                console.log(`[Buff API] [执行过程] 正在获取饰品 [${item.name}] 的 Buff 历史价格走势图表...`);
+                let analysis = null;
+                let purchaseSuitability = "未知";
+                
+                try {
+                    const graphUrl = `https://buff.163.com/api/market/goods/price_history?game=csgo&goods_id=${item.id}&currency=CNY&days=30`;
+                    const graphData = await fetchJson(graphUrl, cookie);
+                    if (graphData && graphData.code === 'OK' && graphData.data && graphData.data.price_history) {
+                        analysis = analyzePriceHistory(graphData.data.price_history);
+                    }
+                } catch(e) {
+                    console.error(`[Buff API] [执行过程] 获取图表失败: ${e.message}`);
+                }
+
+                if (analysis) {
+                    const { slope, sma7, sma30, rsi14 } = analysis;
+                    if (slope > 0) {
+                        if (rsi14 >= 70) purchaseSuitability = "一般";
+                        else if (sma7 >= sma30 && rsi14 < 50) purchaseSuitability = "非常适合";
+                        else if (sma7 < sma30 && rsi14 < 40) purchaseSuitability = "非常适合";
+                        else purchaseSuitability = "适合";
+                    } else {
+                        if (rsi14 < 30) purchaseSuitability = "适合";
+                        else if (rsi14 < 50) purchaseSuitability = "一般";
+                        else if (rsi14 >= 70) purchaseSuitability = "非常不适合";
+                        else purchaseSuitability = "不适合";
+                    }
+                }
+
                 results.push({
                     id: item.id,
                     name: item.name,
                     sell_min_price: item.sell_min_price,
                     sell_num: item.sell_num,
                     steam_min_price: steamData.price,
-                    volume_24h: steamData.volume
+                    volume_24h: steamData.volume,
+                    analysis: analysis,
+                    purchaseSuitability: purchaseSuitability
                 });
 
                 if (steamData.volume === 'Steam API 限制(429)' || (typeof steamData.volume === 'string' && steamData.volume.includes('429'))) {
@@ -175,7 +213,8 @@ async function updateBuffItemsInBackground() {
                     console.log(`[Buff API] [执行过程] 已连续查询 30 次，触发常规防封，等待 2 分钟后再继续...`);
                     await delay(120000); // 2 分钟
                 } else {
-                    await delay(4000); // 默认 4 秒
+                    console.log(`[Buff API] [执行过程] 为保证请求安全，强制等待 10 秒...`);
+                    await delay(10000); // 强制 10 秒
                 }
             }
             pageNum++;

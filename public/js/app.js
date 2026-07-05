@@ -217,6 +217,35 @@ if (testWebhookBtn) {
         tbody.innerHTML = items.map((item, i) => {
             // Find real index in buffItems to ensure checkboxes map correctly
             const realIdx = buffItems.findIndex(b => b.id === item.id);
+            
+            let suitColor = '#888';
+            let suitText = item.purchaseSuitability || '未知';
+            if (suitText === '非常适合') suitColor = '#10b981'; // green-500
+            else if (suitText === '适合') suitColor = '#34d399'; // green-400
+            else if (suitText === '一般') suitColor = '#9ca3af'; // gray-400
+            else if (suitText === '不适合') suitColor = '#f59e0b'; // amber-500
+            else if (suitText === '非常不适合') suitColor = '#ef4444'; // red-500
+            
+            let tooltipContent = '暂无预测数据';
+            if (item.analysis) {
+                const s1 = item.analysis.slope.toFixed(4);
+                const s2 = item.analysis.sma7.toFixed(2);
+                const s3 = item.analysis.sma30.toFixed(2);
+                const s4 = item.analysis.rsi14.toFixed(1);
+                tooltipContent = `
+                    <div style="display: grid; grid-template-columns: repeat(4, max-content); gap: 6px 16px; text-align: left; align-items: center;">
+                        <div style="color: var(--colors-muted-soft); font-size: 12px;">走势斜率(R²)</div>
+                        <div style="color: var(--colors-muted-soft); font-size: 12px;">短期均价</div>
+                        <div style="color: var(--colors-muted-soft); font-size: 12px;">长期均价</div>
+                        <div style="color: var(--colors-muted-soft); font-size: 12px;">RSI</div>
+                        <div style="font-weight: bold; font-family: monospace; font-size: 14px;">${s1}</div>
+                        <div style="font-weight: bold; font-family: monospace; font-size: 14px;">${s2}</div>
+                        <div style="font-weight: bold; font-family: monospace; font-size: 14px;">${s3}</div>
+                        <div style="font-weight: bold; font-family: monospace; font-size: 14px;">${s4}</div>
+                    </div>
+                `.replace(/"/g, '&quot;').replace(/\n/g, '');
+            }
+
             return `
             <tr>
                 <td><input type="checkbox" class="buy-checkbox" data-index="${realIdx}"></td>
@@ -225,6 +254,9 @@ if (testWebhookBtn) {
                 <td>¥${item.sell_min_price}</td>
                 <td>¥${item.steam_min_price}</td>
                 <td style="color:var(--colors-primary); font-weight:500;">${item.discount_rate || 'N/A'}</td>
+                <td style="color:${suitColor}; font-weight:bold; cursor:help;" class="custom-tooltip-trigger" data-tooltip-html="${tooltipContent}">
+                    ${suitText}
+                </td>
                 <td><input type="number" class="text-input buy-qty" value="1" min="1" max="100" style="width:70px;"></td>
             </tr>
             `;
@@ -537,4 +569,33 @@ if (testWebhookBtn) {
 
     // --- Initial load ---
     loadOwned();
+});
+
+// --- Global Tooltip Logic ---
+document.addEventListener('mouseover', (e) => {
+    const trigger = e.target.closest('.custom-tooltip-trigger');
+    if (trigger) {
+        const tooltip = document.getElementById('global-tooltip');
+        if (!tooltip) return;
+        
+        if (trigger.hasAttribute('data-tooltip-html')) {
+            tooltip.innerHTML = trigger.getAttribute('data-tooltip-html');
+        } else {
+            tooltip.textContent = trigger.getAttribute('data-tooltip');
+        }
+        
+        tooltip.classList.add('show');
+        
+        const rect = trigger.getBoundingClientRect();
+        tooltip.style.left = rect.left + (rect.width / 2) + 'px';
+        tooltip.style.top = (rect.top - tooltip.offsetHeight - 10) + 'px';
+        tooltip.style.transform = 'translateX(-50%)';
+    }
+});
+
+document.addEventListener('mouseout', (e) => {
+    if (e.target.closest('.custom-tooltip-trigger')) {
+        const tooltip = document.getElementById('global-tooltip');
+        if (tooltip) tooltip.classList.remove('show');
+    }
 });
