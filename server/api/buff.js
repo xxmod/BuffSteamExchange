@@ -112,6 +112,9 @@ async function updateBuffItemsInBackground() {
         const envVars = getEnvVars();
         let cookie = envVars.BuffCookie || '';
         cookie = cookie.split(';').map(c => c.trim()).filter(c => c).join('; ');
+        
+        let minPriceParam = envVars.BuffMinPrice ? `&min_price=${envVars.BuffMinPrice}` : '';
+        let maxPriceParam = envVars.BuffMaxPrice ? `&max_price=${envVars.BuffMaxPrice}` : '';
 
         const settingsPath = path.join(dataDir, 'settings.json');
         let buffMaxItems = 1000;
@@ -131,7 +134,7 @@ async function updateBuffItemsInBackground() {
 
         console.log(`[Buff API] [执行过程] 正在获取 Buff 市场按销量排序前 ${buffMaxItems} 名商品列表...`);
         while (results.length < buffMaxItems) {
-            const url = `https://buff.163.com/api/market/goods?game=csgo&page_num=${pageNum}&sort_by=sell_num.desc`;
+            const url = `https://buff.163.com/api/market/goods?game=csgo&page_num=${pageNum}&sort_by=sell_num.desc${minPriceParam}${maxPriceParam}`;
             console.log(`[Buff API] [执行过程] 抓取 Buff 第 ${pageNum} 页商品列表...`);
             const data = await fetchJson(url, cookie);
             if (data.code !== 'OK') {
