@@ -10,6 +10,37 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 
 const { analyzePriceHistory } = require('./utils/trend');
 
+function triggerLocalEndpoint(apiPath) {
+    const http = require('http');
+    const envVars = {};
+    const envPath = path.join(__dirname, '../.env');
+    if (fs.existsSync(envPath)) {
+        fs.readFileSync(envPath, 'utf8').split(/\r?\n/).forEach(line => {
+            if (!line || line.startsWith('#')) return;
+            const match = line.match(/^([^=]+)=(.*)$/);
+            if (match) envVars[match[1].trim()] = match[2].trim();
+        });
+    }
+    const auth = Buffer.from(`${envVars.BasicAuthUser||'admin'}:${envVars.BasicAuthPass||'admin'}`).toString('base64');
+    
+    const req = http.request({
+        hostname: 'localhost',
+        port: 9998,
+        path: apiPath,
+        method: 'POST',
+        headers: {
+            'Content-Length': 0,
+            'Authorization': `Basic ${auth}`
+        }
+    }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => console.log(`[Scheduler] 触发 ${apiPath} 响应: ${data}`));
+    });
+    req.on('error', e => console.error(`[Scheduler] 触发 ${apiPath} 异常: ${e.message}`));
+    req.end();
+}
+
 function checkAndRunScheduler() {
     console.log("[Scheduler] Scheduled check running...");
     
@@ -20,7 +51,7 @@ function checkAndRunScheduler() {
         const daysOld = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60 * 24);
         if (daysOld > 3) {
             console.log("[Scheduler] buff_item.json is older than 3 days. Triggering update...");
-            // updateBuffItems().catch(console.error);
+            triggerLocalEndpoint('/api/buff/refresh');
         }
     }
 
@@ -41,7 +72,7 @@ function checkAndRunScheduler() {
 
         if (daysOld > 2 && !hasPending) {
             console.log("[Scheduler] inventory.json is older than 2 days and no pending items. Triggering update...");
-            // updateSteamInventory().catch(console.error);
+            triggerLocalEndpoint('/api/steam/inventory/refresh');
         }
     }
 
