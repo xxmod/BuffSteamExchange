@@ -119,11 +119,13 @@
             <section id="page-buy" class="page">
                 <div class="hero-band">
                     <h1>Buff 市场购买</h1>
-                    <p class="subtitle">从 Buff 市场扫描并下单</p>
+                    <p class="subtitle">从 Buff 市场扫描并下单 <span id="buff-update-time" style="color:var(--colors-muted-soft); font-size:12px; margin-left: 12px;"></span></p>
                 </div>
                 <div class="content-body">
                     <div class="controls-band">
-                        <button class="button-primary" id="refresh-buff-btn">强制更新商品列表</button>
+                        <div style="display: flex; align-items: center; margin-right: 16px;">
+                            <button class="button-primary" id="refresh-buff-btn">强制更新商品列表</button>
+                        </div>
                         <div style="display: flex; gap: 8px; flex: 1;">
                             <input type="text" class="text-input" id="search-buff-input" placeholder="包含关键字..."
                                 style="flex: 1;">
@@ -168,10 +170,12 @@
             <section id="page-inventory" class="page">
                 <div class="hero-band">
                     <h1>Steam 账号库存</h1>
-                    <p class="subtitle">实时账号底层库存</p>
+                    <p class="subtitle">实时账号底层库存 <span id="inventory-update-time" style="color:var(--colors-muted-soft); font-size:12px; margin-left: 12px;"></span></p>
                 </div>
                 <div class="content-body">
-                    <button class="button-primary" id="refresh-inventory-btn" style="margin-bottom: 16px;">刷新库存</button>
+                    <div style="display: flex; align-items: center; margin-bottom: 16px;">
+                        <button class="button-primary" id="refresh-inventory-btn">刷新库存</button>
+                    </div>
                     <div class="card-grid" id="inventory-grid">
                         <!-- JS injected -->
                     </div>

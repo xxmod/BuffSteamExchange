@@ -173,7 +173,14 @@ if (testWebhookBtn) {
     // --- Buy ---
     let currentSort = { key: 'discount_rate', asc: true };
     async function loadBuffItems() {
-        buffItems = await apiGet('/api/buff/items');
+        const res = await apiGet('/api/buff/items');
+        buffItems = Array.isArray(res) ? res : (res.items || []);
+        
+        const timeSpan = document.getElementById('buff-update-time');
+        if (timeSpan && res.lastUpdate) {
+            timeSpan.textContent = '最近更新: ' + new Date(res.lastUpdate).toLocaleString();
+        }
+        
         sortAndRenderBuffItems();
     }
     
@@ -314,7 +321,14 @@ if (testWebhookBtn) {
 
     // --- Owned ---
     async function loadOwned() {
-        ownedItems = await apiGet('/api/steam/owned');
+        const res = await apiGet('/api/steam/owned');
+        ownedItems = Array.isArray(res) ? res : (res.items || []);
+        
+        const timeSpan = document.getElementById('inventory-update-time');
+        if (timeSpan && res.lastUpdate) {
+            timeSpan.textContent = '最近更新: ' + new Date(res.lastUpdate).toLocaleString();
+        }
+
         const tbody = document.getElementById('owned-items-body');
         tbody.innerHTML = ownedItems.map((item, i) => `
             <tr>

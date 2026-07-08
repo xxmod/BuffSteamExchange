@@ -70,8 +70,15 @@ router.get('/inventory', (req, res) => {
 
 router.get('/owned', (req, res) => {
     const p = path.join(dataDir, 'in_inventory_item.json');
-    if (fs.existsSync(p)) res.json(JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt));
-    else res.json([]);
+    if (fs.existsSync(p)) {
+        const stats = fs.statSync(p);
+        res.json({ 
+            items: JSON.parse(fs.readFileSync(p, 'utf8')).filter(i => !i._updatedt),
+            lastUpdate: stats.mtimeMs
+        });
+    } else {
+        res.json({ items: [], lastUpdate: null });
+    }
 });
 
 router.post('/owned/delete', (req, res) => {

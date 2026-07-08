@@ -447,12 +447,13 @@ router.get('/items', (req, res) => {
     if (fs.existsSync(buffPath)) {
         try {
             const data = JSON.parse(fs.readFileSync(buffPath, 'utf8')).filter(i => !i._updatedt);
-            res.json(data);
+            const stats = fs.statSync(buffPath);
+            res.json({ items: data, lastUpdate: stats.mtimeMs });
         } catch (e) {
             res.status(500).json({ error: "Failed to parse buff_item.json" });
         }
     } else {
-        res.json([]);
+        res.json({ items: [], lastUpdate: null });
     }
 });
 
