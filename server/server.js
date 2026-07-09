@@ -26,10 +26,18 @@ app.use((req, res, next) => {
         } catch(e) {}
     }
 
-    const b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    let b64auth = (req.headers.authorization || '').split(' ')[1] || '';
+    if (!b64auth && req.headers.cookie) {
+        const match = req.headers.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
+        if (match) b64auth = match[1];
+    }
+    
     const [login, pwd] = Buffer.from(b64auth, 'base64').toString().split(':');
 
     if (login && pwd && login === username && pwd === password) {
+        if (!req.headers.cookie || !req.headers.cookie.includes(`auth_token=${b64auth}`)) {
+            res.cookie('auth_token', b64auth, { maxAge: 365 * 24 * 60 * 60 * 1000, httpOnly: true });
+        }
         return next();
     }
 
