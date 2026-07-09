@@ -1,7 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-// const { updateBuffItems } = require('./api/buff'); // Later
-// const { updateSteamInventory } = require('./api/steam'); // Later
 const steamRouter = require('./api/steam');
 
 const dataDir = path.join(__dirname, '../data');
@@ -10,18 +8,23 @@ const delay = ms => new Promise(res => setTimeout(res, ms));
 
 const { analyzePriceHistory } = require('./utils/trend');
 
+function getAdminAuth() {
+    let username = 'admin';
+    let password = '123456';
+    const settingsPath = path.join(__dirname, '../data/settings.json');
+    if (fs.existsSync(settingsPath)) {
+        try {
+            const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+            if (settings.AuthUsername) username = settings.AuthUsername;
+            if (settings.AuthPassword) password = settings.AuthPassword;
+        } catch(e) {}
+    }
+    return Buffer.from(`${username}:${password}`).toString('base64');
+}
+
 function triggerLocalEndpoint(apiPath) {
     const http = require('http');
-    const envVars = {};
-    const envPath = path.join(__dirname, '../.env');
-    if (fs.existsSync(envPath)) {
-        fs.readFileSync(envPath, 'utf8').split(/\r?\n/).forEach(line => {
-            if (!line || line.startsWith('#')) return;
-            const match = line.match(/^([^=]+)=(.*)$/);
-            if (match) envVars[match[1].trim()] = match[2].trim();
-        });
-    }
-    const auth = Buffer.from(`${envVars.BasicAuthUser||'admin'}:${envVars.BasicAuthPass||'admin'}`).toString('base64');
+    const auth = getAdminAuth();
     
     const req = http.request({
         hostname: 'localhost',
@@ -76,8 +79,8 @@ function checkAndRunScheduler() {
         }
     }
 
-    // 1-hour inventory check for pending receives
-    // We will implement this later when steam.js is ready
+    // 1-hour inventory check for pending receives has been omitted in this block
+    // as it is handled periodically elsewhere or via manual refresh.
 }
 
 const http = require('http');
@@ -223,9 +226,7 @@ async function checkAutoSellTradableItems() {
         if (itemsToSell.length > 0) {
             console.log(`[Scheduler] 发现 ${itemsToSell.length} 件符合条件的饰品，正在触发自动上架...`);
             
-            const username = settings.AuthUsername || 'admin';
-            const password = settings.AuthPassword || '123456';
-            const auth = Buffer.from(`${username}:${password}`).toString('base64');
+            const auth = getAdminAuth();
             
             const postData = JSON.stringify({ items: itemsToSell });
 
