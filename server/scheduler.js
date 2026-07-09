@@ -126,8 +126,10 @@ async function checkAutoSellTradableItems() {
                         if (history) {
                             analysis = analyzePriceHistory(history);
                             trendCache[itemName] = analysis;
-                            fetchedNow = true;
+                        } else {
+                            trendCache[itemName] = null;
                         }
+                        fetchedNow = true;
                     }
 
                     if (analysis) {
